@@ -1,0 +1,39 @@
+# CraftEvidence
+
+Case&Evidence形式のExcelブックへスクリーンショットを安全に配置するWindowsデスクトップツールです。`0.1.0-preview.12` は完成仕様レビュー候補です。
+
+## 実装済み
+
+- 起動中Excelブックの探索と、接続世代・ReadOnly・保護状態の再検証
+- Clipboard監視、プレビュー、画像編集（矩形・矢印・文字・モザイク・切り抜き、編集Undo/Redo）
+- Case/New/Old解析、前後Case移動、空き領域または末尾への単一・複数画像の自動配置、必要行の挿入、配置箇所へのフォーカス
+- ActiveCell上への行挿入と、Case終端罫線を保持する安全条件付き末尾行削除
+- 管理画像の差し替え・削除
+- 配置・行操作・差し替え・削除のアプリ内Undo/Redo（削除行のネイティブ書式、同一Sheet参照数式、名前定義、印刷範囲も復元。別Sheetに数式がある場合は行削除を安全停止）
+- 左右余白、診断ログ、グローバルショートカットの設定
+- 変更途中の補償、20件の履歴上限、Excelの自動保存を行わない安全境界
+
+## ビルド・検証
+
+```powershell
+.\bootstrap.ps1
+dotnet test .\tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj -c Release --no-build --filter "TestCategory=ExcelIntegration"
+```
+
+## 発行
+
+```powershell
+.\bootstrap.ps1 -Publish -Runtime win-x64
+```
+
+成果物は `artifacts/publish/win-x64/CraftEvidence.exe` です。SHA-256 sidecarも同じフォルダに生成されます。
+
+## 使い方
+
+1. Excelで対象ブックとシートを開き、書き込み先Case内のセルを選択します。
+2. CraftEvidenceでWorkbook、Sheet、New/Oldを選びます。
+3. `Win + Shift + S` でキャプチャし、通常配置・編集配置・自動配置・末尾配置を選びます。
+4. 管理画像をExcelで1つ選択すると差し替え・削除できます。`Ctrl+Z` / `Ctrl+Y` または画面ボタンで履歴を操作します。
+5. 内容を確認後、保存はExcel側で明示的に行います。
+
+参照元 `C:\work\Macro\Case&Evidence` は変更しません。実Excel結合テストはOS一時フォルダに専用ブックを作成します。詳細は [実装状態](docs/review-status.md) と [テスト手順](docs/testing.md) を参照してください。

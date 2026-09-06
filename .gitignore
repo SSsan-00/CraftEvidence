@@ -1,0 +1,26 @@
+# Build output
+**/bin/
+**/obj/
+artifacts/
+
+# IDE/user state
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Test output
+TestResults/
+coverage/
+
+# Local runtime state
+*.log
+settings.local.json
+.tmp-reference-inspect/
+
+# Office temporary files
+~$*.xls*
+
+# OS files
+Thumbs.db
+.DS_Store

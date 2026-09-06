@@ -1,0 +1,30 @@
+{
+  "activeRow": 8,
+  "rawUsedLastRow": 24,
+  "logicalEvidenceLastRow": 13,
+  "newFirstColumn": 3,
+  "observedLastEvidenceColumn": 12,
+  "anchors": [
+    {
+      "row": 3,
+      "hasValueInColumnA": true,
+      "hasValueInColumnB": true,
+      "hasTopBorder": false
+    }
+  ],
+  "verticalBoundaries": [
+    {
+      "rightColumn": 7,
+      "startRow": 3,
+      "endRow": 13
+    }
+  ],
+  "horizontalBoundaries": [
+    {
+      "row": 13,
+      "firstColumn": 1,
+      "lastColumn": 12
+    }
+  ],
+  "oldHeaderColumns": [8]
+}

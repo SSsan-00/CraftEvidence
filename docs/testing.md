@@ -1,0 +1,45 @@
+# CraftEvidence テスト方針
+
+## 通常テスト
+
+`CraftEvidence.Tests` はExcelなしで動くCoreテストを既定とする。
+
+```powershell
+dotnet test tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj --filter 'TestCategory!=ExcelIntegration'
+```
+
+## Excel結合テスト
+
+Officeを起動するテストには `[TestCategory("ExcelIntegration")]` を付ける。通常CIでは実行せず、Office導入済みの明示環境だけで実行する。
+
+現行の実機テストは、同一Excelプロセスに一時Workbookを2冊作成し、Workbook別HWND、通常編集後の接続ID維持、非アクティブ側のセル選択、`Application.Goto`、`EnableEvents`復元を確認する。さらに一時PNGの手動／Case自動配置、必要行挿入、管理画像のExport・差し替え・削除・元geometry復元、保護Sheetでの拒否を確認する。行操作ではActiveCell上への挿入、live safety snapshotに基づくCase末尾削除、Undo/Redo、編集済み挿入行のUndo拒否を確認する。Close取消、監視token再発行、確定Close後の旧identity拒否、生成Excel PID終了と一時ファイル回収も同一シナリオで検証する。Windows PowerShell 5.1でも参照ハッシュ検証を再現できるよう、スクリプトはUTF-8 BOMで保存する。
+
+参照Workbookを使う場合は次を必須とする。
+
+1. SHA-256をベースラインと照合する。
+2. `%TEMP%\CraftEvidence.Tests\<GUID>` へコピーする。
+3. コピーだけをExcelで開く。
+4. Excelを閉じ、一時コピーを削除する。
+5. 参照元SHA-256を再確認する。
+
+## Review sliceのテスト対象
+
+- Case Anchorの選択
+- 次AnchorからのCase終端
+- 最終Caseの境界信号一致/不一致
+- 動的New/Old境界
+- 画像の縮小と非拡大
+- 2行非画像帯と4行末尾余白
+- 虫食い候補と末尾fallback
+- 入力値のguard
+- Excel最大行・最大列境界と整数overflow guard
+- 非最終Caseを含む論理Evidence終端の整合
+- Workbook close/reopenの接続世代とExcelイベント復元
+- 明示的な行挿入と、live safety snapshotによるCase末尾行削除
+
+## 完了条件
+
+- Release buildでwarning 0
+- Excel非依存テストが全件成功
+- `bootstrap.ps1 -Publish` が単一EXEを生成
+- 参照ベースラインのハッシュ不変

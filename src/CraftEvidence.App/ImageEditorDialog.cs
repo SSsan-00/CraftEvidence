@@ -1,0 +1,495 @@
+using System.ComponentModel;
+using System.Drawing.Drawing2D;
+
+namespace CraftEvidence.App;
+
+internal sealed class ImageEditorDialog : Form
+{
+  private readonly ImageEditDocument document;
+  private readonly ImageEditorCanvas canvas;
+  private readonly ToolStripButton undoButton;
+  private readonly ToolStripButton redoButton;
+  private readonly ToolStripButton resetButton;
+  private readonly ToolStripStatusLabel statusLabel;
+  private bool confirmed;
+
+  public ImageEditorDialog(Image image)
+  {
+    document = new ImageEditDocument(image);
+    Text = "画像編集";
+    StartPosition = FormStartPosition.CenterParent;
+    MinimumSize = new Size(760, 560);
+    Size = new Size(1000, 760);
+    AutoScaleMode = AutoScaleMode.Dpi;
+    Font = new Font("Meiryo UI", 9F);
+    KeyPreview = true;
+
+    var toolStrip = new ToolStrip
+    {
+      GripStyle = ToolStripGripStyle.Hidden,
+      Dock = DockStyle.Top,
+      Padding = new Padding(6, 3, 6, 3),
+    };
+
+    var rectangleButton = AddToolButton(toolStrip, "赤枠", ImageEditorTool.RedRectangle);
+    AddToolButton(toolStrip, "矢印", ImageEditorTool.Arrow);
+    AddToolButton(toolStrip, "テキスト", ImageEditorTool.Text);
+    AddToolButton(toolStrip, "モザイク", ImageEditorTool.Mosaic);
+    AddToolButton(toolStrip, "トリミング", ImageEditorTool.Crop);
+    rectangleButton.Checked = true;
+    toolStrip.Items.Add(new ToolStripSeparator());
+
+    undoButton = new ToolStripButton("元に戻す (Ctrl+Z)")
+    {
+      Enabled = false,
+      ToolTipText = "直前の編集を元に戻します",
+    };
+    undoButton.Click += (_, _) => document.Undo();
+    toolStrip.Items.Add(undoButton);
+
+    redoButton = new ToolStripButton("やり直す (Ctrl+Y)")
+    {
+      Enabled = false,
+      ToolTipText = "元に戻した編集をやり直します",
+    };
+    redoButton.Click += (_, _) => document.Redo();
+    toolStrip.Items.Add(redoButton);
+
+    resetButton = new ToolStripButton("元画像へ戻す")
+    {
+      Enabled = false,
+      ToolTipText = "この編集セッション開始時の画像へ戻します",
+    };
+    resetButton.Click += (_, _) => document.Reset();
+    toolStrip.Items.Add(resetButton);
+
+    canvas = new ImageEditorCanvas(document)
+    {
+      Dock = DockStyle.Fill,
+      Tool = ImageEditorTool.RedRectangle,
+      AccessibleName = "画像編集キャンバス",
+    };
+    canvas.TextRequested += CanvasTextRequested;
+
+    var statusStrip = new StatusStrip { SizingGrip = false };
+    statusLabel = new ToolStripStatusLabel
+    {
+      Spring = true,
+      TextAlign = ContentAlignment.MiddleLeft,
+      Text = InstructionFor(ImageEditorTool.RedRectangle),
+    };
+    canvas.ActionRejected += (_, message) => statusLabel.Text = message;
+    statusStrip.Items.Add(statusLabel);
+
+    var applyButton = new Button
+    {
+      Text = "編集を反映",
+      AutoSize = true,
+      DialogResult = DialogResult.OK,
+    };
+    applyButton.Click += (_, _) => confirmed = true;
+    var cancelButton = new Button
+    {
+      Text = "キャンセル",
+      AutoSize = true,
+      DialogResult = DialogResult.Cancel,
+    };
+
+    var bottomPanel = new FlowLayoutPanel
+    {
+      Dock = DockStyle.Bottom,
+      AutoSize = true,
+      FlowDirection = FlowDirection.RightToLeft,
+      Padding = new Padding(8),
+    };
+    bottomPanel.Controls.Add(cancelButton);
+    bottomPanel.Controls.Add(applyButton);
+
+    Controls.Add(canvas);
+    Controls.Add(bottomPanel);
+    Controls.Add(statusStrip);
+    Controls.Add(toolStrip);
+    AcceptButton = applyButton;
+    CancelButton = cancelButton;
+
+    document.Changed += DocumentChanged;
+    FormClosing += ConfirmDiscardIfNeeded;
+  }
+
+  public bool HasChanges => document.HasChanges;
+
+  public Bitmap GetEditedImage() => document.GetImageCopy();
+
+  protected override bool ProcessCmdKey(ref Message message, Keys keyData)
+  {
+    if (keyData == (Keys.Control | Keys.Z))
+    {
+      document.Undo();
+      return true;
+    }
+
+    if (keyData == (Keys.Control | Keys.Y))
+    {
+      document.Redo();
+      return true;
+    }
+
+    return base.ProcessCmdKey(ref message, keyData);
+  }
+
+  protected override void Dispose(bool disposing)
+  {
+    if (disposing)
+    {
+      document.Changed -= DocumentChanged;
+      canvas.TextRequested -= CanvasTextRequested;
+      document.Dispose();
+    }
+
+    base.Dispose(disposing);
+  }
+
+  private ToolStripButton AddToolButton(
+    ToolStrip toolStrip,
+    string text,
+    ImageEditorTool tool)
+  {
+    var button = new ToolStripButton(text)
+    {
+      CheckOnClick = true,
+      Tag = tool,
+      ToolTipText = InstructionFor(tool),
+    };
+    button.Click += (_, _) => SelectTool(button, toolStrip, tool);
+    toolStrip.Items.Add(button);
+    return button;
+  }
+
+  private void SelectTool(ToolStripButton selected, ToolStrip toolStrip, ImageEditorTool tool)
+  {
+    foreach (var item in toolStrip.Items.OfType<ToolStripButton>())
+    {
+      if (item.Tag is ImageEditorTool)
+      {
+        item.Checked = ReferenceEquals(item, selected);
+      }
+    }
+
+    canvas.Tool = tool;
+    statusLabel.Text = InstructionFor(tool);
+  }
+
+  private void CanvasTextRequested(object? sender, ImageTextRequestedEventArgs eventArgs)
+  {
+    using var dialog = new ImageTextInputDialog();
+    if (dialog.ShowDialog(this) == DialogResult.OK)
+    {
+      document.DrawText(dialog.EnteredText, eventArgs.ImageLocation);
+    }
+  }
+
+  private void DocumentChanged(object? sender, EventArgs eventArgs)
+  {
+    undoButton.Enabled = document.CanUndo;
+    redoButton.Enabled = document.CanRedo;
+    resetButton.Enabled = document.HasChanges;
+    canvas.Invalidate();
+  }
+
+  private void ConfirmDiscardIfNeeded(object? sender, FormClosingEventArgs eventArgs)
+  {
+    if (confirmed || !document.HasChanges || DialogResult == DialogResult.OK)
+    {
+      return;
+    }
+
+    if (MessageBox.Show(
+      this,
+      "画像の編集内容を破棄しますか？",
+      "CraftEvidence",
+      MessageBoxButtons.YesNo,
+      MessageBoxIcon.Question,
+      MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+    {
+      eventArgs.Cancel = true;
+    }
+  }
+
+  private static string InstructionFor(ImageEditorTool tool) => tool switch
+  {
+    ImageEditorTool.RedRectangle => "ドラッグした範囲へ赤枠を追加します。",
+    ImageEditorTool.Arrow => "矢印の始点から終点までドラッグします。",
+    ImageEditorTool.Text => "文字を追加する位置をクリックします。",
+    ImageEditorTool.Mosaic => "隠したい範囲をドラッグします。",
+    ImageEditorTool.Crop => "残したい範囲をドラッグしてトリミングします。",
+    _ => string.Empty,
+  };
+}
+
+internal enum ImageEditorTool
+{
+  RedRectangle,
+  Arrow,
+  Text,
+  Mosaic,
+  Crop,
+}
+
+internal sealed class ImageEditorCanvas : Control
+{
+  private const int CanvasPadding = 8;
+  private readonly ImageEditDocument document;
+  private Point dragStartClient;
+  private Point dragCurrentClient;
+  private bool dragging;
+
+  public ImageEditorCanvas(ImageEditDocument document)
+  {
+    this.document = document ?? throw new ArgumentNullException(nameof(document));
+    DoubleBuffered = true;
+    BackColor = Color.FromArgb(32, 32, 32);
+    Cursor = Cursors.Cross;
+    SetStyle(ControlStyles.ResizeRedraw, true);
+  }
+
+  public event EventHandler<ImageTextRequestedEventArgs>? TextRequested;
+
+  public event EventHandler<string>? ActionRejected;
+
+  [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+  public ImageEditorTool Tool { get; set; }
+
+  protected override void OnPaint(PaintEventArgs eventArgs)
+  {
+    base.OnPaint(eventArgs);
+    var imageBounds = GetImageBounds();
+    if (imageBounds.Width <= 0 || imageBounds.Height <= 0)
+    {
+      return;
+    }
+
+    eventArgs.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+    eventArgs.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+    eventArgs.Graphics.DrawImage(document.CurrentImage, imageBounds);
+
+    if (!dragging || Tool == ImageEditorTool.Text)
+    {
+      return;
+    }
+
+    eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+    using var pen = new Pen(
+      Tool is ImageEditorTool.RedRectangle or ImageEditorTool.Arrow ? Color.Red : Color.DeepSkyBlue,
+      Math.Max(1.5F, DeviceDpi / 96F * 2F))
+    {
+      DashStyle = Tool is ImageEditorTool.Mosaic or ImageEditorTool.Crop
+        ? DashStyle.Dash
+        : DashStyle.Solid,
+    };
+    if (Tool == ImageEditorTool.Arrow)
+    {
+      using var arrowCap = new AdjustableArrowCap(5F, 5F, true);
+      pen.CustomEndCap = arrowCap;
+      eventArgs.Graphics.DrawLine(pen, dragStartClient, dragCurrentClient);
+    }
+    else
+    {
+      eventArgs.Graphics.DrawRectangle(pen, Normalize(dragStartClient, dragCurrentClient));
+    }
+  }
+
+  protected override void OnMouseDown(MouseEventArgs eventArgs)
+  {
+    base.OnMouseDown(eventArgs);
+    if (eventArgs.Button != MouseButtons.Left || !GetImageBounds().Contains(eventArgs.Location))
+    {
+      return;
+    }
+
+    if (Tool == ImageEditorTool.Text)
+    {
+      TextRequested?.Invoke(this, new ImageTextRequestedEventArgs(ToImagePoint(eventArgs.Location)));
+      return;
+    }
+
+    dragging = true;
+    dragStartClient = eventArgs.Location;
+    dragCurrentClient = eventArgs.Location;
+    Capture = true;
+    Invalidate();
+  }
+
+  protected override void OnMouseMove(MouseEventArgs eventArgs)
+  {
+    base.OnMouseMove(eventArgs);
+    if (!dragging)
+    {
+      return;
+    }
+
+    dragCurrentClient = ClampToImageBounds(eventArgs.Location);
+    Invalidate();
+  }
+
+  protected override void OnMouseUp(MouseEventArgs eventArgs)
+  {
+    base.OnMouseUp(eventArgs);
+    if (!dragging || eventArgs.Button != MouseButtons.Left)
+    {
+      return;
+    }
+
+    dragCurrentClient = ClampToImageBounds(eventArgs.Location);
+    dragging = false;
+    Capture = false;
+    var start = ToImagePoint(dragStartClient);
+    var end = ToImagePoint(dragCurrentClient);
+    var changed = Tool switch
+    {
+      ImageEditorTool.RedRectangle => document.DrawRedRectangle(Normalize(start, end)),
+      ImageEditorTool.Arrow => document.DrawArrow(start, end),
+      ImageEditorTool.Mosaic => document.Mosaic(Normalize(start, end)),
+      ImageEditorTool.Crop => document.Crop(Normalize(start, end)),
+      _ => false,
+    };
+
+    if (!changed)
+    {
+      ActionRejected?.Invoke(this, "編集範囲を2ピクセル以上で指定してください。");
+    }
+
+    Invalidate();
+  }
+
+  protected override void OnMouseCaptureChanged(EventArgs eventArgs)
+  {
+    base.OnMouseCaptureChanged(eventArgs);
+    if (Capture || !dragging)
+    {
+      return;
+    }
+
+    dragging = false;
+    Invalidate();
+  }
+
+  private Rectangle GetImageBounds()
+  {
+    var availableWidth = Math.Max(0, ClientSize.Width - (CanvasPadding * 2));
+    var availableHeight = Math.Max(0, ClientSize.Height - (CanvasPadding * 2));
+    if (availableWidth == 0 || availableHeight == 0)
+    {
+      return Rectangle.Empty;
+    }
+
+    var scale = Math.Min(
+      availableWidth / (double)document.Width,
+      availableHeight / (double)document.Height);
+    var width = Math.Max(1, (int)Math.Round(document.Width * scale));
+    var height = Math.Max(1, (int)Math.Round(document.Height * scale));
+    return new Rectangle(
+      (ClientSize.Width - width) / 2,
+      (ClientSize.Height - height) / 2,
+      width,
+      height);
+  }
+
+  private Point ClampToImageBounds(Point point)
+  {
+    var bounds = GetImageBounds();
+    return new Point(
+      Math.Clamp(point.X, bounds.Left, bounds.Right - 1),
+      Math.Clamp(point.Y, bounds.Top, bounds.Bottom - 1));
+  }
+
+  private Point ToImagePoint(Point clientPoint)
+  {
+    var bounds = GetImageBounds();
+    var x = (clientPoint.X - bounds.Left) * document.Width / (double)bounds.Width;
+    var y = (clientPoint.Y - bounds.Top) * document.Height / (double)bounds.Height;
+    return new Point(
+      Math.Clamp((int)Math.Floor(x), 0, document.Width - 1),
+      Math.Clamp((int)Math.Floor(y), 0, document.Height - 1));
+  }
+
+  private static Rectangle Normalize(Point first, Point second)
+  {
+    var left = Math.Min(first.X, second.X);
+    var top = Math.Min(first.Y, second.Y);
+    var right = Math.Max(first.X, second.X);
+    var bottom = Math.Max(first.Y, second.Y);
+    return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+  }
+}
+
+internal sealed class ImageTextRequestedEventArgs(Point imageLocation) : EventArgs
+{
+  public Point ImageLocation { get; } = imageLocation;
+}
+
+internal sealed class ImageTextInputDialog : Form
+{
+  private readonly TextBox textBox = new()
+  {
+    Dock = DockStyle.Fill,
+    Multiline = true,
+    ScrollBars = ScrollBars.Vertical,
+    MaxLength = 500,
+  };
+
+  public ImageTextInputDialog()
+  {
+    Text = "テキストを追加";
+    StartPosition = FormStartPosition.CenterParent;
+    ClientSize = new Size(440, 180);
+    MinimumSize = new Size(360, 160);
+    AutoScaleMode = AutoScaleMode.Dpi;
+    Font = new Font("Meiryo UI", 9F);
+    ShowInTaskbar = false;
+
+    var label = new Label
+    {
+      Text = "画像へ追加する文字:",
+      Dock = DockStyle.Top,
+      AutoSize = true,
+      Padding = new Padding(0, 0, 0, 6),
+    };
+    var okButton = new Button
+    {
+      Text = "追加",
+      AutoSize = true,
+      DialogResult = DialogResult.OK,
+    };
+    var cancelButton = new Button
+    {
+      Text = "キャンセル",
+      AutoSize = true,
+      DialogResult = DialogResult.Cancel,
+    };
+    var buttons = new FlowLayoutPanel
+    {
+      Dock = DockStyle.Bottom,
+      AutoSize = true,
+      FlowDirection = FlowDirection.RightToLeft,
+      Padding = new Padding(0, 8, 0, 0),
+    };
+    buttons.Controls.Add(cancelButton);
+    buttons.Controls.Add(okButton);
+
+    var layout = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
+    layout.Controls.Add(textBox);
+    layout.Controls.Add(label);
+    layout.Controls.Add(buttons);
+    Controls.Add(layout);
+    AcceptButton = okButton;
+    CancelButton = cancelButton;
+  }
+
+  public string EnteredText => textBox.Text;
+
+  protected override void OnShown(EventArgs eventArgs)
+  {
+    base.OnShown(eventArgs);
+    textBox.Focus();
+  }
+}

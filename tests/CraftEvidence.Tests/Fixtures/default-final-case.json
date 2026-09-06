@@ -1,0 +1,36 @@
+{
+  "activeRow": 60,
+  "rawUsedLastRow": 102,
+  "logicalEvidenceLastRow": 102,
+  "newFirstColumn": 3,
+  "observedLastEvidenceColumn": 32,
+  "anchors": [
+    {
+      "row": 3,
+      "hasValueInColumnA": true,
+      "hasValueInColumnB": true,
+      "hasTopBorder": false
+    },
+    {
+      "row": 53,
+      "hasValueInColumnA": false,
+      "hasValueInColumnB": true,
+      "hasTopBorder": true
+    }
+  ],
+  "verticalBoundaries": [
+    {
+      "rightColumn": 17,
+      "startRow": 3,
+      "endRow": 102
+    }
+  ],
+  "horizontalBoundaries": [
+    {
+      "row": 102,
+      "firstColumn": 1,
+      "lastColumn": 32
+    }
+  ],
+  "oldHeaderColumns": [18]
+}
