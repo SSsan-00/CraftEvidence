@@ -7,6 +7,15 @@ namespace CraftEvidence.Tests;
 public sealed class AppInfrastructureTests
 {
   [TestMethod]
+  public void NormalizeScreenSelection_SupportsEveryDragDirection()
+  {
+    var expected = new Rectangle(10, 20, 21, 31);
+
+    Assert.AreEqual(expected, ScreenCaptureDialog.NormalizeSelection(new Point(10, 20), new Point(30, 50)));
+    Assert.AreEqual(expected, ScreenCaptureDialog.NormalizeSelection(new Point(30, 50), new Point(10, 20)));
+  }
+
+  [TestMethod]
   public void SettingsStore_RoundTripsNormalizedValuesWithoutRuntimeSelection()
   {
     using var directory = new TemporaryDirectory();

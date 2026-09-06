@@ -34,7 +34,7 @@ public sealed class ImageEditDocumentTests
     }
 
     using var document = new ImageEditDocument(source);
-    Assert.IsTrue(document.DrawRedRectangle(new Rectangle(2, 2, 12, 12)));
+    Assert.IsTrue(document.DrawRectangle(new Rectangle(2, 2, 12, 12)));
     using var edited = document.GetImageCopy();
     Assert.IsTrue(document.HasChanges);
 
@@ -93,6 +93,45 @@ public sealed class ImageEditDocumentTests
     Assert.IsFalse(document.Crop(new Rectangle(1, 1, 1, 1)));
     Assert.IsFalse(document.DrawText("   ", Point.Empty));
     Assert.IsFalse(document.CanUndo);
+  }
+
+  [TestMethod]
+  public void AnnotationColor_IsAppliedToFrameArrowAndTextLabel()
+  {
+    using var source = new Bitmap(120, 80);
+    using (var graphics = Graphics.FromImage(source))
+    {
+      graphics.Clear(Color.White);
+    }
+
+    using var document = new ImageEditDocument(source);
+    Assert.IsTrue(document.DrawRectangle(new Rectangle(5, 5, 50, 40), Color.Blue));
+    Assert.IsTrue(document.DrawArrow(new Point(60, 5), new Point(100, 30), Color.Green));
+    Assert.IsTrue(document.DrawText("label", new Point(5, 50), Color.Purple));
+    using var result = document.GetImageCopy();
+
+    Assert.IsTrue(ContainsColor(result, Color.Blue));
+    Assert.IsTrue(ContainsColor(result, Color.Green));
+    Assert.IsTrue(ContainsColor(result, Color.Purple));
+  }
+
+  private static bool ContainsColor(Bitmap image, Color expected)
+  {
+    for (var y = 0; y < image.Height; y++)
+    {
+      for (var x = 0; x < image.Width; x++)
+      {
+        var actual = image.GetPixel(x, y);
+        if (Math.Abs(actual.R - expected.R) <= 5 &&
+          Math.Abs(actual.G - expected.G) <= 5 &&
+          Math.Abs(actual.B - expected.B) <= 5)
+        {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private static Bitmap CreateQuadrantImage()

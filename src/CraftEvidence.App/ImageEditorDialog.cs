@@ -10,6 +10,7 @@ internal sealed class ImageEditorDialog : Form
   private readonly ToolStripButton undoButton;
   private readonly ToolStripButton redoButton;
   private readonly ToolStripButton resetButton;
+  private readonly ToolStripButton colorButton;
   private readonly ToolStripStatusLabel statusLabel;
   private bool confirmed;
 
@@ -31,7 +32,7 @@ internal sealed class ImageEditorDialog : Form
       Padding = new Padding(6, 3, 6, 3),
     };
 
-    var rectangleButton = AddToolButton(toolStrip, "赤枠", ImageEditorTool.RedRectangle);
+    var rectangleButton = AddToolButton(toolStrip, "枠", ImageEditorTool.Rectangle);
     AddToolButton(toolStrip, "矢印", ImageEditorTool.Arrow);
     AddToolButton(toolStrip, "テキスト", ImageEditorTool.Text);
     AddToolButton(toolStrip, "モザイク", ImageEditorTool.Mosaic);
@@ -39,7 +40,16 @@ internal sealed class ImageEditorDialog : Form
     rectangleButton.Checked = true;
     toolStrip.Items.Add(new ToolStripSeparator());
 
-    undoButton = new ToolStripButton("元に戻す (Ctrl+Z)")
+    colorButton = new ToolStripButton("色")
+    {
+      BackColor = Color.Red,
+      ToolTipText = "枠・矢印・テキストラベルの色を選択します",
+    };
+    colorButton.Click += (_, _) => SelectAnnotationColor();
+    toolStrip.Items.Add(colorButton);
+    toolStrip.Items.Add(new ToolStripSeparator());
+
+    undoButton = new ToolStripButton("元に戻す")
     {
       Enabled = false,
       ToolTipText = "直前の編集を元に戻します",
@@ -47,7 +57,7 @@ internal sealed class ImageEditorDialog : Form
     undoButton.Click += (_, _) => document.Undo();
     toolStrip.Items.Add(undoButton);
 
-    redoButton = new ToolStripButton("やり直す (Ctrl+Y)")
+    redoButton = new ToolStripButton("やり直す")
     {
       Enabled = false,
       ToolTipText = "元に戻した編集をやり直します",
@@ -66,7 +76,8 @@ internal sealed class ImageEditorDialog : Form
     canvas = new ImageEditorCanvas(document)
     {
       Dock = DockStyle.Fill,
-      Tool = ImageEditorTool.RedRectangle,
+      Tool = ImageEditorTool.Rectangle,
+      DrawingColor = Color.Red,
       AccessibleName = "画像編集キャンバス",
     };
     canvas.TextRequested += CanvasTextRequested;
@@ -76,7 +87,7 @@ internal sealed class ImageEditorDialog : Form
     {
       Spring = true,
       TextAlign = ContentAlignment.MiddleLeft,
-      Text = InstructionFor(ImageEditorTool.RedRectangle),
+      Text = InstructionFor(ImageEditorTool.Rectangle),
     };
     canvas.ActionRejected += (_, message) => statusLabel.Text = message;
     statusStrip.Items.Add(statusLabel);
@@ -184,7 +195,7 @@ internal sealed class ImageEditorDialog : Form
     using var dialog = new ImageTextInputDialog();
     if (dialog.ShowDialog(this) == DialogResult.OK)
     {
-      document.DrawText(dialog.EnteredText, eventArgs.ImageLocation);
+      document.DrawText(dialog.EnteredText, eventArgs.ImageLocation, canvas.DrawingColor);
     }
   }
 
@@ -193,6 +204,24 @@ internal sealed class ImageEditorDialog : Form
     undoButton.Enabled = document.CanUndo;
     redoButton.Enabled = document.CanRedo;
     resetButton.Enabled = document.HasChanges;
+    canvas.Invalidate();
+  }
+
+  private void SelectAnnotationColor()
+  {
+    using var dialog = new ColorDialog
+    {
+      Color = canvas.DrawingColor,
+      FullOpen = true,
+      AnyColor = true,
+    };
+    if (dialog.ShowDialog(this) != DialogResult.OK)
+    {
+      return;
+    }
+
+    canvas.DrawingColor = dialog.Color;
+    colorButton.BackColor = dialog.Color;
     canvas.Invalidate();
   }
 
@@ -217,7 +246,7 @@ internal sealed class ImageEditorDialog : Form
 
   private static string InstructionFor(ImageEditorTool tool) => tool switch
   {
-    ImageEditorTool.RedRectangle => "ドラッグした範囲へ赤枠を追加します。",
+    ImageEditorTool.Rectangle => "ドラッグした範囲へ枠を追加します。",
     ImageEditorTool.Arrow => "矢印の始点から終点までドラッグします。",
     ImageEditorTool.Text => "文字を追加する位置をクリックします。",
     ImageEditorTool.Mosaic => "隠したい範囲をドラッグします。",
@@ -228,7 +257,7 @@ internal sealed class ImageEditorDialog : Form
 
 internal enum ImageEditorTool
 {
-  RedRectangle,
+  Rectangle,
   Arrow,
   Text,
   Mosaic,
@@ -259,6 +288,9 @@ internal sealed class ImageEditorCanvas : Control
   [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
   public ImageEditorTool Tool { get; set; }
 
+  [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+  public Color DrawingColor { get; set; } = Color.Red;
+
   protected override void OnPaint(PaintEventArgs eventArgs)
   {
     base.OnPaint(eventArgs);
@@ -279,7 +311,7 @@ internal sealed class ImageEditorCanvas : Control
 
     eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
     using var pen = new Pen(
-      Tool is ImageEditorTool.RedRectangle or ImageEditorTool.Arrow ? Color.Red : Color.DeepSkyBlue,
+      Tool is ImageEditorTool.Rectangle or ImageEditorTool.Arrow ? DrawingColor : Color.DeepSkyBlue,
       Math.Max(1.5F, DeviceDpi / 96F * 2F))
     {
       DashStyle = Tool is ImageEditorTool.Mosaic or ImageEditorTool.Crop
@@ -346,8 +378,8 @@ internal sealed class ImageEditorCanvas : Control
     var end = ToImagePoint(dragCurrentClient);
     var changed = Tool switch
     {
-      ImageEditorTool.RedRectangle => document.DrawRedRectangle(Normalize(start, end)),
-      ImageEditorTool.Arrow => document.DrawArrow(start, end),
+      ImageEditorTool.Rectangle => document.DrawRectangle(Normalize(start, end), DrawingColor),
+      ImageEditorTool.Arrow => document.DrawArrow(start, end, DrawingColor),
       ImageEditorTool.Mosaic => document.Mosaic(Normalize(start, end)),
       ImageEditorTool.Crop => document.Crop(Normalize(start, end)),
       _ => false,

@@ -40,6 +40,7 @@ public sealed class MainForm : Form
   private readonly Label statusLabel = new();
   private readonly Button refreshButton = new();
   private readonly Button settingsButton = new();
+  private readonly Button captureScreenButton = new();
   private readonly Button batchImagesButton = new();
   private readonly System.Windows.Forms.Timer clipboardRetryTimer = new();
   private bool clipboardListenerRegistered;
@@ -58,6 +59,7 @@ public sealed class MainForm : Form
   private CraftEvidenceSettings settings = new();
   private GlobalShortcutRegistration? globalShortcut;
   private int mutationInProgress;
+  private bool screenCaptureInProgress;
 
   private bool CanUpdateUi =>
     IsHandleCreated &&
@@ -143,7 +145,7 @@ public sealed class MainForm : Form
     base.WndProc(ref message);
     if (globalShortcut?.Matches(ref message) is true)
     {
-      QueueClipboardPreview();
+      BeginInvoke(async () => await CaptureScreenAsync());
       return;
     }
     if (message.Msg == NativeClipboard.ClipboardUpdateMessage &&
@@ -292,12 +294,16 @@ public sealed class MainForm : Form
     var captureHelp = new Label
     {
       AutoSize = true,
-      Text = "Win + Shift + S で取得（Ctrl+Shift+Eで再表示）し、通常／編集／自動配置を選びます。",
+      Text = "Ctrl+Shift+Eで画面を選択し、通常／編集／自動配置を選びます。Win+Shift+Sも利用できます。",
     };
+    captureScreenButton.Text = "画面をキャプチャ";
+    captureScreenButton.AutoSize = true;
+    captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
     batchImagesButton.Text = "複数画像を自動配置";
     batchImagesButton.AutoSize = true;
     batchImagesButton.Click += async (_, _) => await PlaceImageFilesAutomaticallyAsync();
     capturePanel.Controls.Add(captureHelp);
+    capturePanel.Controls.Add(captureScreenButton);
     capturePanel.Controls.Add(batchImagesButton);
     layout.Controls.Add(capturePanel, 1, 7);
     layout.SetColumnSpan(capturePanel, 2);
@@ -607,56 +613,7 @@ public sealed class MainForm : Form
       }
 
       ResetClipboardRetry();
-      var workbook = workbookSelector.SelectedItem as WorkbookIdentity;
-      var worksheetName = string.IsNullOrWhiteSpace(worksheetNameBox.Text)
-        ? "ActiveSheet"
-        : worksheetNameBox.Text.Trim();
-      using var preview = new PreviewDialog(
-        new Bitmap(imageCopy),
-        workbook?.DisplayLabel ?? "未選択",
-        worksheetName,
-        SelectedSide,
-        workbook is not null);
-      clipboardPreviewOpen = true;
-      DialogResult previewResult;
-      try
-      {
-        previewResult = preview.ShowDialog(this);
-      }
-      finally
-      {
-        clipboardPreviewOpen = false;
-      }
-
-      if (previewResult == DialogResult.Yes && workbook is not null)
-      {
-        await PlaceClipboardImageAsync(workbook, worksheetName, SelectedSide, imageCopy);
-      }
-      else if (previewResult == DialogResult.Retry && workbook is not null)
-      {
-        using var editor = new ImageEditorDialog(imageCopy);
-        if (editor.ShowDialog(this) == DialogResult.OK)
-        {
-          using var editedImage = editor.GetEditedImage();
-          await PlaceClipboardImageAsync(workbook, worksheetName, SelectedSide, editedImage);
-        }
-        else
-        {
-          SetStatus("画像編集をキャンセルしました。Excelは変更していません。");
-        }
-      }
-      else if (previewResult == DialogResult.OK && workbook is not null)
-      {
-        await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, imageCopy, true);
-      }
-      else if (previewResult == DialogResult.Ignore && workbook is not null)
-      {
-        await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, imageCopy, false);
-      }
-      else
-      {
-        SetStatus("Clipboard画像を確認しました。Excelは変更していません。");
-      }
+      await ShowImagePreviewAsync(imageCopy, "Clipboard");
     }
     catch (ExternalException exception)
     {
@@ -670,6 +627,102 @@ public sealed class MainForm : Form
         clipboardPreviewPending = false;
         QueueClipboardPreview();
       }
+    }
+  }
+
+  private async Task CaptureScreenAsync()
+  {
+    if (screenCaptureInProgress || clipboardPreviewOpen ||
+      Volatile.Read(ref mutationInProgress) != 0 || IsDisposed || Disposing)
+    {
+      return;
+    }
+
+    screenCaptureInProgress = true;
+    captureScreenButton.Enabled = false;
+    try
+    {
+      Hide();
+      await Task.Delay(150);
+      using var capture = new ScreenCaptureDialog();
+      if (capture.ShowDialog() != DialogResult.OK)
+      {
+        SetStatus("画面キャプチャをキャンセルしました。");
+        return;
+      }
+
+      using var image = capture.TakeCapturedImage();
+      Show();
+      Activate();
+      await ShowImagePreviewAsync(image, "キャプチャ");
+    }
+    catch (Exception exception) when (exception is ExternalException or InvalidOperationException)
+    {
+      SetStatus($"画面をキャプチャできませんでした: {exception.Message}");
+    }
+    finally
+    {
+      if (!IsDisposed && !Disposing)
+      {
+        Show();
+        Activate();
+        captureScreenButton.Enabled = true;
+      }
+      screenCaptureInProgress = false;
+    }
+  }
+
+  private async Task ShowImagePreviewAsync(Image image, string sourceLabel)
+  {
+    var workbook = workbookSelector.SelectedItem as WorkbookIdentity;
+    var worksheetName = string.IsNullOrWhiteSpace(worksheetNameBox.Text)
+      ? "ActiveSheet"
+      : worksheetNameBox.Text.Trim();
+    using var preview = new PreviewDialog(
+      new Bitmap(image),
+      workbook?.DisplayLabel ?? "未選択",
+      worksheetName,
+      SelectedSide,
+      workbook is not null);
+    clipboardPreviewOpen = true;
+    DialogResult previewResult;
+    try
+    {
+      previewResult = preview.ShowDialog(this);
+    }
+    finally
+    {
+      clipboardPreviewOpen = false;
+    }
+
+    if (previewResult == DialogResult.Yes && workbook is not null)
+    {
+      await PlaceClipboardImageAsync(workbook, worksheetName, SelectedSide, image);
+    }
+    else if (previewResult == DialogResult.Retry && workbook is not null)
+    {
+      using var editor = new ImageEditorDialog(image);
+      if (editor.ShowDialog(this) == DialogResult.OK)
+      {
+        using var editedImage = editor.GetEditedImage();
+        await PlaceClipboardImageAsync(workbook, worksheetName, SelectedSide, editedImage);
+      }
+      else
+      {
+        SetStatus("画像編集をキャンセルしました。Excelは変更していません。");
+      }
+    }
+    else if (previewResult == DialogResult.OK && workbook is not null)
+    {
+      await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, image, true);
+    }
+    else if (previewResult == DialogResult.Ignore && workbook is not null)
+    {
+      await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, image, false);
+    }
+    else
+    {
+      SetStatus($"{sourceLabel}画像を確認しました。Excelは変更していません。");
     }
   }
 
@@ -1984,6 +2037,7 @@ public sealed class MainForm : Form
       previousCaseButton.Enabled = false;
       nextCaseButton.Enabled = false;
       batchImagesButton.Enabled = false;
+      captureScreenButton.Enabled = false;
       return true;
     }
 
@@ -2002,6 +2056,7 @@ public sealed class MainForm : Form
       previousCaseButton.Enabled = true;
       nextCaseButton.Enabled = true;
       batchImagesButton.Enabled = true;
+      captureScreenButton.Enabled = !screenCaptureInProgress;
     }
   }
 

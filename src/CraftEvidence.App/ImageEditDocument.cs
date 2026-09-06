@@ -67,7 +67,7 @@ internal sealed class ImageEditDocument : IDisposable
     return CopyBitmap(current);
   }
 
-  public bool DrawRedRectangle(Rectangle bounds)
+  public bool DrawRectangle(Rectangle bounds, Color? color = null)
   {
     if (!TryClip(bounds, out var clipped))
     {
@@ -79,7 +79,7 @@ internal sealed class ImageEditDocument : IDisposable
       using var graphics = Graphics.FromImage(next);
       graphics.SmoothingMode = SmoothingMode.AntiAlias;
       var stroke = StrokeWidth(next);
-      using var pen = new Pen(Color.Red, stroke);
+      using var pen = new Pen(color ?? Color.Red, stroke);
       var inset = stroke / 2F;
       graphics.DrawRectangle(
         pen,
@@ -90,7 +90,7 @@ internal sealed class ImageEditDocument : IDisposable
     });
   }
 
-  public bool DrawArrow(Point start, Point end)
+  public bool DrawArrow(Point start, Point end, Color? color = null)
   {
     start = Clamp(start);
     end = Clamp(end);
@@ -103,14 +103,14 @@ internal sealed class ImageEditDocument : IDisposable
     {
       using var graphics = Graphics.FromImage(next);
       graphics.SmoothingMode = SmoothingMode.AntiAlias;
-      using var pen = new Pen(Color.Red, StrokeWidth(next));
+      using var pen = new Pen(color ?? Color.Red, StrokeWidth(next));
       using var arrowCap = new AdjustableArrowCap(5F, 5F, true);
       pen.CustomEndCap = arrowCap;
       graphics.DrawLine(pen, start, end);
     });
   }
 
-  public bool DrawText(string text, Point location)
+  public bool DrawText(string text, Point location, Color? color = null)
   {
     if (string.IsNullOrWhiteSpace(text))
     {
@@ -128,9 +128,13 @@ internal sealed class ImageEditDocument : IDisposable
       var measured = graphics.MeasureString(text.Trim(), font);
       var x = Math.Min(location.X, Math.Max(0F, next.Width - measured.Width - 6F));
       var y = Math.Min(location.Y, Math.Max(0F, next.Height - measured.Height - 4F));
+      var labelColor = color ?? Color.Red;
+      var labelBounds = new RectangleF(x, y, measured.Width + 6F, measured.Height + 4F);
       using var background = new SolidBrush(Color.FromArgb(210, Color.White));
-      using var foreground = new SolidBrush(Color.Red);
-      graphics.FillRectangle(background, x, y, measured.Width + 6F, measured.Height + 4F);
+      using var foreground = new SolidBrush(labelColor);
+      using var border = new Pen(labelColor, Math.Max(1F, StrokeWidth(next) / 2F));
+      graphics.FillRectangle(background, labelBounds);
+      graphics.DrawRectangle(border, labelBounds.X, labelBounds.Y, labelBounds.Width, labelBounds.Height);
       graphics.DrawString(text.Trim(), font, foreground, x + 3F, y + 2F);
     });
   }
