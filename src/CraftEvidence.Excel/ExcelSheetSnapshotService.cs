@@ -16,7 +16,7 @@ public sealed class ExcelSheetSnapshotService
   private const int XlEdgeRight = 10;
   private const int XlLineStyleNone = -4142;
 
-  public SheetSnapshotResult Capture(WorkbookIdentity workbook, string worksheetName)
+  public SheetSnapshotResult Capture(WorkbookIdentity workbook, string worksheetName, int? scopeRow = null)
   {
     ArgumentNullException.ThrowIfNull(workbook);
     ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
@@ -59,7 +59,7 @@ public sealed class ExcelSheetSnapshotService
           runningObjectTable.GetObject(monikers[0], out runningObject);
           return runningObject is null
             ? SheetSnapshotResult.Failed(worksheetName, "The selected Workbook is no longer available.")
-            : TryCaptureRunningObject(runningObject, workbook, worksheetName) ??
+            : TryCaptureRunningObject(runningObject, workbook, worksheetName, scopeRow) ??
               SheetSnapshotResult.Failed(worksheetName, "The selected Workbook could not be matched.");
         }
         finally
@@ -91,7 +91,8 @@ public sealed class ExcelSheetSnapshotService
   private static SheetSnapshotResult? TryCaptureRunningObject(
     object runningObject,
     WorkbookIdentity identity,
-    string worksheetName)
+    string worksheetName,
+    int? scopeRow)
   {
     if (TryGetProperty(runningObject, "Workbooks", out var workbooks))
     {
@@ -111,7 +112,7 @@ public sealed class ExcelSheetSnapshotService
             candidate = InvokeProperty(workbooks!, "Item", index);
             if (candidate is not null && WorkbookMatches(candidate, identity))
             {
-              return CaptureWorkbook(runningObject, candidate, identity, worksheetName);
+              return CaptureWorkbook(runningObject, candidate, identity, worksheetName, scopeRow);
             }
           }
           finally
@@ -136,7 +137,7 @@ public sealed class ExcelSheetSnapshotService
     try
     {
       return ApplicationMatches(application, identity) && WorkbookMatches(runningObject, identity)
-        ? CaptureWorkbook(application, runningObject, identity, worksheetName)
+        ? CaptureWorkbook(application, runningObject, identity, worksheetName, scopeRow)
         : null;
     }
     finally
@@ -149,7 +150,8 @@ public sealed class ExcelSheetSnapshotService
     object application,
     object workbook,
     WorkbookIdentity identity,
-    string worksheetName)
+    string worksheetName,
+    int? scopeRow)
   {
     if (!WorkbookWindowMatchesIdentity(workbook, identity))
     {
@@ -213,6 +215,9 @@ public sealed class ExcelSheetSnapshotService
       var activeReference = new CellReference(ReadInt(activeCell, "Row"), ReadInt(activeCell, "Column"));
       var values = InvokeProperty(usedRange, "Value2");
       var formulas = InvokeProperty(usedRange, "Formula");
+      var usedRangeHasNoMerges = TryGetProperty(usedRange, "MergeCells", out var mergeCells) &&
+        mergeCells is not null &&
+        !Convert.ToBoolean(mergeCells, CultureInfo.InvariantCulture);
       var comments = ReadLinkedCells(worksheet, "Comments");
       comments.UnionWith(ReadLinkedCells(worksheet, "CommentsThreaded", optional: true));
       var hyperlinks = ReadLinkedCells(worksheet, "Hyperlinks");
@@ -255,6 +260,14 @@ public sealed class ExcelSheetSnapshotService
           ? horizontalEndRows[0]
           : lastRow;
 
+      var occupancyRow = scopeRow ?? activeReference.Row;
+      var currentAnchor = anchors.LastOrDefault(anchor => anchor.Row <= occupancyRow);
+      var nextAnchor = currentAnchor is null
+        ? null
+        : anchors.FirstOrDefault(anchor => anchor.Row > currentAnchor.Row);
+      var currentCaseFirstRow = currentAnchor?.Row ?? firstAnchorRow;
+      var currentCaseLastRow = Math.Min(nextAnchor?.Row - 1 ?? logicalLastRow, logicalLastRow);
+
       var cells = ReadOccupiedCells(
         worksheet,
         values,
@@ -265,10 +278,12 @@ public sealed class ExcelSheetSnapshotService
         firstColumn,
         rowCount,
         columnCount,
-        logicalLastRow,
-        observedLastColumn);
+        currentCaseFirstRow,
+        currentCaseLastRow,
+        observedLastColumn,
+        usedRangeHasNoMerges);
       var shapes = ReadShapes(worksheet);
-      var rowHeights = ReadRowHeights(worksheet, firstAnchorRow, logicalLastRow);
+      var rowHeights = ReadRowHeights(worksheet, currentCaseFirstRow, currentCaseLastRow);
       var columnWidths = ReadColumnWidths(worksheet, NewFirstColumn, observedLastColumn);
       var signals = new SheetLayoutSignals(
         activeReference.Row,
@@ -462,12 +477,14 @@ public sealed class ExcelSheetSnapshotService
     int firstColumn,
     int rowCount,
     int columnCount,
-    int logicalLastRow,
-    int evidenceLastColumn)
+    int caseFirstRow,
+    int caseLastRow,
+    int evidenceLastColumn,
+    bool usedRangeHasNoMerges)
   {
     var result = new List<SnapshotCell>();
-    var startRow = Math.Max(firstRow, 1);
-    var endRow = Math.Min(firstRow + rowCount - 1, logicalLastRow);
+    var startRow = Math.Max(firstRow, caseFirstRow);
+    var endRow = Math.Min(firstRow + rowCount - 1, caseLastRow);
     var startColumn = Math.Max(firstColumn, NewFirstColumn);
     var endColumn = Math.Min(firstColumn + columnCount - 1, evidenceLastColumn);
     for (var row = startRow; row <= endRow; row++)
@@ -479,7 +496,7 @@ public sealed class ExcelSheetSnapshotService
           IsNonEmpty(MatrixValue(formulas, row, column, firstRow, firstColumn, rowCount, columnCount));
         var hasComment = comments.Contains((row, column));
         var hasHyperlink = hyperlinks.Contains((row, column));
-        var isMerged = IsMergedCell(worksheet, row, column);
+        var isMerged = !usedRangeHasNoMerges && IsMergedCell(worksheet, row, column);
         if (hasContent || hasComment || hasHyperlink || isMerged)
         {
           result.Add(new SnapshotCell(row, column, hasContent, hasComment, hasHyperlink, isMerged));

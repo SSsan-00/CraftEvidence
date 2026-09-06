@@ -1,4 +1,4 @@
-# 0.1.0-preview.14 実装・再レビュー状態
+# 0.1.0-preview.15 実装・再レビュー状態
 
 - 状態: 完成仕様レビュー候補
 - 検証日: 2026-09-06
@@ -19,7 +19,7 @@
 | 回転・crop済み管理画像の不可逆性 | 操作前に回転/cropを検証し、初期状態でなければ安全停止 |
 | 未接続のCase行間隔設定 | UIと設定モデルから削除。Case間隔は実シート境界信号から解析 |
 | 自動解析がExcel状態を変える | 対象SheetがActiveでない場合は安全停止し、Snapshot取得ではWorkbook/SheetをActivateしない |
-| 旧版文書との矛盾 | READMEと実装状態をpreview.14へ同期 |
+| 旧版文書との矛盾 | READMEと実装状態をpreview.15へ同期 |
 | 行削除Undoの書式復元不足 | 削除行を一時Excelブックへネイティブ退避し、行高・罫線・入力規則・条件付き書式を復元 |
 | Undo/Redo中のユーザー変更 | 行位置・数式・主要書式のfingerprint不一致時に安全停止 |
 | 範囲外参照の破損 | 対象Worksheet数式、Workbook名前定義、印刷範囲を退避・復元。別Sheetに数式があるWorkbookは行削除を安全停止 |
@@ -35,6 +35,8 @@
 | 配置先が事前に分からない | PreviewへSheet、Case、Side、開始セル、配置方法、追加行数、画像幅を表示 |
 | 自動配置が遅い | Preview解析を配置時に再利用し、画像ごとの全Snapshot再取得を廃止。配置直前のfingerprint照合は維持 |
 | キャプチャ画像が小さい | 不安定な画像DPIメタデータではなくWindows論理96 DPIでpixelからpointへ換算 |
+| 実EvidenceブックでSnapshotが遅い | ActiveCellが属する30行のCaseだけを占有・行高走査し、結合セルがないUsedRangeではセル単位の結合確認を省略 |
+| 実Evidenceブック構造の回帰不足 | 個別EvidenceのC:Q／R:AF、30行Case、書式末尾を含む422行UsedRangeと392行論理終端をFixture化 |
 
 ## 安全境界
 

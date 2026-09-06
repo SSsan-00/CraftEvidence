@@ -1,0 +1,29 @@
+{
+  "activeRow": 40,
+  "rawUsedLastRow": 422,
+  "logicalEvidenceLastRow": 392,
+  "newFirstColumn": 3,
+  "observedLastEvidenceColumn": 32,
+  "anchors": [
+    { "row": 3, "hasValueInColumnA": true, "hasValueInColumnB": true, "hasTopBorder": false },
+    { "row": 33, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 63, "hasValueInColumnA": true, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 93, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 123, "hasValueInColumnA": true, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 153, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 183, "hasValueInColumnA": true, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 213, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 243, "hasValueInColumnA": true, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 273, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 303, "hasValueInColumnA": true, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 333, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true },
+    { "row": 363, "hasValueInColumnA": false, "hasValueInColumnB": true, "hasTopBorder": true }
+  ],
+  "verticalBoundaries": [
+    { "rightColumn": 17, "startRow": 3, "endRow": 392 }
+  ],
+  "horizontalBoundaries": [
+    { "row": 392, "firstColumn": 1, "lastColumn": 32 }
+  ],
+  "oldHeaderColumns": [18]
+}

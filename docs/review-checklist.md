@@ -1,4 +1,4 @@
-# 0.1.0-preview.14 再レビューチェックリスト
+# 0.1.0-preview.15 再レビューチェックリスト
 
 ## 仕様
 
@@ -34,7 +34,7 @@
 - [x] 一時WorkbookでROT列挙と配置先フォーカスを実機検証する
 - [x] Publish先を清掃し、EXEとSHA-256以外を拒否する
 - [x] 差し替え後の共通・個別・テストケースWorkbookを読み取り専用で再確認する
-- [x] 共通 `C:G` / `H:L` と個別 `C:L` / `M:V` の可変幅を回帰テストする
+- [x] 過去の狭幅Fixtureと現行実例 `C:Q` / `R:AF` の可変幅を回帰テストする
 - [x] 参照ベースライン6件が再発行後も一致する
 - [x] raw UsedRangeと論理Evidence終端を分離する
 - [x] 同一Excelインスタンスの複数Workbookを別HWNDで識別する
@@ -78,3 +78,6 @@
 - [x] Previewから選べる配置操作を編集あり／なしに限定し、どちらも自動配置する
 - [x] Preview解析を配置処理へ渡し、配置直前に同一Snapshot fingerprintを検証する
 - [x] 画面画像を96 DPIのWindows論理サイズへ正規化し、高DPIメタデータによる過小配置を防ぐ
+- [x] 個別Evidence実例の30行Case、C:Q／R:AF境界、書式だけのUsedRange末尾を回帰テストする
+- [x] 占有セルと行高の走査をActiveCellが属するCase内に限定する
+- [x] UsedRangeに結合セルがない場合、セル単位のMergeCells COM呼び出しを省略する

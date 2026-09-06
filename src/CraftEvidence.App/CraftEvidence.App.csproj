@@ -6,7 +6,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>CraftEvidence</AssemblyName>
     <RootNamespace>CraftEvidence.App</RootNamespace>
-    <Version>0.1.0-preview.14</Version>
+    <Version>0.1.0-preview.15</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

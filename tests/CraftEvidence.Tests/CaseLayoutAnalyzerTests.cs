@@ -6,6 +6,18 @@ namespace CraftEvidence.Tests;
 [TestClass]
 public sealed class CaseLayoutAnalyzerTests
 {
+  [TestMethod]
+  public void Analyze_IndividualEvidenceWorkbook_ResolvesThirtyRowCaseDespiteFormattedTail()
+  {
+    var result = analyzer.Analyze(FixtureLoader.LoadLayout("individual-evidence-layout.json"));
+
+    Assert.IsTrue(result.IsSafe, string.Join(" ", result.Reasons));
+    Assert.AreEqual(33, result.Layout!.StartRow);
+    Assert.AreEqual(62, result.Layout.EndRow);
+    Assert.AreEqual(new ColumnRange(3, 17), result.Layout.NewRegion);
+    Assert.AreEqual(new ColumnRange(18, 32), result.Layout.OldRegion);
+  }
+
   private readonly CaseLayoutAnalyzer analyzer = new();
 
   [TestMethod]

@@ -43,7 +43,7 @@ CraftEvidence は、既存の Case&Evidence が生成した Excel エビデン�
 - New 側列数は変更できる。`NewOnly` では Old 側は既定列数を維持し、`Both` では Old 側も New 側と同じ列数へ追従する。
 - New/Old 境界の縦罫線、Case 境界の横罫線、Old 見出しはオプションで消える可能性がある。
 - 最終 Case の下端は、横罫線、New/Old 境界縦罫線の終端、実コンテンツ、UsedRange を組み合わせて判断する必要がある。
-- 2026-08-31差し替え後の共通エビデンスはNew `C:G` / Old `H:L`、個別エビデンスはNew `C:L` / Old `M:V`であり、固定列幅では扱えないことを再確認した。
+- 過去の差し替えブックでは可変幅を確認済み。2026-09-06の現行共通・個別ブックはNew `C:Q` / Old `R:AF`で、個別ブックは30行Caseと書式だけのUsedRange末尾を持つ。
 - 共通エビデンスではCase下端より後ろに書式だけの行が残るため、SheetSnapshotは`RawUsedLastRow`と`LogicalEvidenceLastRow`を分けて収集する。
 - `FIRST_DEST_ROW = 3`、`SLOT_HEIGHT = 50`、C/Q/R/AF は互換性フォールバック情報であり、主要判定条件にはしない。
 

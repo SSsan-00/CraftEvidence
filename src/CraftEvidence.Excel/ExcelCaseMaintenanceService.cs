@@ -21,7 +21,7 @@ public sealed class ExcelCaseMaintenanceService
     int caseRow,
     int tailRows = 4)
   {
-    var captured = snapshotService.Capture(workbook, worksheetName);
+    var captured = snapshotService.Capture(workbook, worksheetName, caseRow);
     if (!captured.Succeeded || captured.Snapshot is null)
     {
       return RowMutationResult.Failed(RowMutationOperation.Delete, worksheetName, captured.Message);

@@ -22,7 +22,7 @@ public sealed class ExcelManagedReplacementLayoutService
     ImageDimensions image,
     double horizontalMarginPoints)
   {
-    var captured = snapshotService.Capture(workbook, target.WorksheetName);
+    var captured = snapshotService.Capture(workbook, target.WorksheetName, target.Metadata.AnchorCell.Row);
     if (!captured.Succeeded || captured.Snapshot is null)
     {
       return ReplacementLayoutResult.Failed(captured.Message);
@@ -77,7 +77,10 @@ public sealed class ExcelManagedReplacementLayoutService
       return ReplacementLayoutResult.Failed(mutated.Message);
     }
 
-    var insertedHeight = snapshotService.Capture(workbook, target.WorksheetName).Snapshot?.RowHeights
+    var insertedHeight = snapshotService.Capture(
+      workbook,
+      target.WorksheetName,
+      target.Metadata.AnchorCell.Row).Snapshot?.RowHeights
       .Where(pair => pair.Key >= mutated.StartRow && pair.Key < mutated.StartRow + mutated.Count)
       .Sum(pair => pair.Value) ?? 0;
     if (insertedHeight + 0.05 < extraHeight)

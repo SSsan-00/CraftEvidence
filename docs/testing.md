@@ -37,6 +37,7 @@ Officeを起動するテストには `[TestCategory("ExcelIntegration")]` を付
 - 非最終Caseを含む論理Evidence終端の整合
 - Workbook close/reopenの接続世代とExcelイベント復元
 - 明示的な行挿入と、live safety snapshotによるCase末尾行削除
+- 個別Evidence実例の30行Case、C:Q／R:AF境界、書式末尾を含むUsedRange
 
 ## 完了条件
 
