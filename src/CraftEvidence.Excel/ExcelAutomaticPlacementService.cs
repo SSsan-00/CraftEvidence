@@ -127,6 +127,7 @@ public sealed class ExcelAutomaticPlacementService
         analyzed,
         plans,
         Fingerprint(snapshot),
+        ResolveCaseLabel(snapshot, analyzed.Layout!.StartRow),
         $"{snapshot.WorksheetName} の{side}側へ{plans.Count}件を配置する計画を作成しました。");
     }
     catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or OverflowException)
@@ -142,7 +143,8 @@ public sealed class ExcelAutomaticPlacementService
     EvidenceSide side,
     IReadOnlyList<AutomaticPlacementImage> images,
     bool preferActiveGap = true,
-    double horizontalMarginPoints = 6)
+    double horizontalMarginPoints = 6,
+    AutomaticPlacementAnalysisResult? preparedAnalysis = null)
   {
     var validation = ValidateImages(images, requireFiles: true);
     if (validation is not null)
@@ -150,10 +152,17 @@ public sealed class ExcelAutomaticPlacementService
       return AutomaticPlacementResult.Failed(validation);
     }
 
-    var initialAnalysis = Analyze(workbook, worksheetName, side, images, preferActiveGap, horizontalMarginPoints);
+    var initialAnalysis = preparedAnalysis ?? Analyze(workbook, worksheetName, side, images, preferActiveGap, horizontalMarginPoints);
     if (!initialAnalysis.Succeeded)
     {
       return AutomaticPlacementResult.Failed(initialAnalysis.Message, initialAnalysis);
+    }
+
+    if (!AnalysisMatchesRequest(initialAnalysis, worksheetName, images) || !SnapshotStillMatches(workbook, initialAnalysis))
+    {
+      return AutomaticPlacementResult.Failed(
+        "プレビュー後にWorksheetが変更されました。再度キャプチャを確認してください。",
+        initialAnalysis);
     }
 
     var appliedRows = new List<AppliedRowInsertion>();
@@ -161,36 +170,14 @@ public sealed class ExcelAutomaticPlacementService
     var executedSteps = new List<AutomaticPlacementStep>();
     for (var index = 0; index < images.Count; index++)
     {
-      var liveAnalysis = Analyze(
-        workbook,
-        initialAnalysis.WorksheetName,
-        side,
-        [images[index]],
-        index == 0 && preferActiveGap,
-        horizontalMarginPoints);
-      if (!liveAnalysis.Succeeded || liveAnalysis.Steps.Count != 1)
-      {
-        return Compensate(workbook, initialAnalysis, placed, appliedRows, liveAnalysis.Message);
-      }
-
-      var step = liveAnalysis.Steps[0] with { Index = index };
-      if (!SnapshotStillMatches(workbook, liveAnalysis))
-      {
-        return Compensate(
-          workbook,
-          initialAnalysis,
-          placed,
-          appliedRows,
-          "Worksheet changed after analysis; refresh and retry.");
-      }
-
-      var currentCaseEnd = liveAnalysis.LayoutAnalysis!.Layout!.EndRow;
+      var step = initialAnalysis.Steps[index];
+      var currentCaseEnd = initialAnalysis.LayoutAnalysis!.Layout!.EndRow + appliedRows.Sum(row => row.Count);
       foreach (var insertion in step.Plan.Insertions)
       {
         var appliedInsertion = ResolveAppliedInsertion(currentCaseEnd, insertion);
         var mutation = rowMutationService.InsertRows(
           workbook,
-          liveAnalysis.WorksheetName,
+          initialAnalysis.WorksheetName,
           appliedInsertion);
         if (!mutation.Succeeded || !mutation.Changed)
         {
@@ -201,45 +188,9 @@ public sealed class ExcelAutomaticPlacementService
         currentCaseEnd = checked(currentCaseEnd + mutation.Count);
       }
 
-      if (step.Plan.Insertions.Count > 0)
-      {
-        liveAnalysis = Analyze(
-          workbook,
-          liveAnalysis.WorksheetName,
-          side,
-          [images[index]],
-          preferActiveGap: index == 0 && preferActiveGap,
-          horizontalMarginPoints: horizontalMarginPoints);
-        if (!liveAnalysis.Succeeded || liveAnalysis.Steps.Count != 1)
-        {
-          return Compensate(workbook, initialAnalysis, placed, appliedRows, liveAnalysis.Message);
-        }
-
-        step = liveAnalysis.Steps[0] with { Index = index };
-        if (step.Plan.Insertions.Count > 0)
-        {
-          return Compensate(
-            workbook,
-            initialAnalysis,
-            placed,
-            appliedRows,
-            "行挿入後も安全な配置領域を確保できませんでした。");
-        }
-      }
-
-      if (!SnapshotStillMatches(workbook, liveAnalysis))
-      {
-        return Compensate(
-          workbook,
-          initialAnalysis,
-          placed,
-          appliedRows,
-          "Worksheet changed immediately before placement; changes were cancelled.");
-      }
-
       var placement = imagePlacementService.PlaceImage(
         workbook,
-        liveAnalysis.WorksheetName,
+        initialAnalysis.WorksheetName,
         step.Plan.FocusCell,
         side,
         step.Image.ImagePath,
@@ -281,6 +232,24 @@ public sealed class ExcelAutomaticPlacementService
     var current = snapshotService.Capture(workbook, expected.WorksheetName);
     return current.Succeeded && current.Snapshot is not null &&
       string.Equals(Fingerprint(current.Snapshot), expected.SnapshotFingerprint, StringComparison.Ordinal);
+  }
+
+  private static bool AnalysisMatchesRequest(
+    AutomaticPlacementAnalysisResult analysis,
+    string worksheetName,
+    IReadOnlyList<AutomaticPlacementImage> images) =>
+    (string.Equals(worksheetName, "ActiveSheet", StringComparison.OrdinalIgnoreCase) ||
+      string.Equals(worksheetName, analysis.WorksheetName, StringComparison.OrdinalIgnoreCase)) &&
+    analysis.Steps.Count == images.Count &&
+    analysis.Steps.Select(step => step.Image).SequenceEqual(images);
+
+  private static string ResolveCaseLabel(SheetSnapshot snapshot, int startRow)
+  {
+    var anchor = snapshot.LayoutSignals.Anchors.Last(anchor => anchor.Row <= startRow);
+    var values = new[] { anchor.ColumnAValue, anchor.ColumnBValue }
+      .Where(value => !string.IsNullOrWhiteSpace(value));
+    var label = string.Join("-", values);
+    return string.IsNullOrWhiteSpace(label) ? $"開始行 {startRow}" : label;
   }
 
   private static RowInsertion ResolveAppliedInsertion(int currentCaseEnd, RowInsertion insertion)
@@ -504,10 +473,11 @@ public sealed record AutomaticPlacementAnalysisResult(
   LayoutAnalysisResult? LayoutAnalysis,
   IReadOnlyList<AutomaticPlacementStep> Steps,
   string SnapshotFingerprint,
+  string CaseLabel,
   string Message)
 {
   public static AutomaticPlacementAnalysisResult Failed(string message) =>
-    new(false, string.Empty, null, [], string.Empty, message);
+    new(false, string.Empty, null, [], string.Empty, string.Empty, message);
 }
 
 public sealed record AppliedRowInsertion(string WorksheetName, int StartRow, int Count, string Reason);

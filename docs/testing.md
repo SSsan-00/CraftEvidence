@@ -29,6 +29,7 @@ Officeを起動するテストには `[TestCategory("ExcelIntegration")]` を付
 - 最終Caseの境界信号一致/不一致
 - 動的New/Old境界
 - 画像の縮小と非拡大
+- 画面pixelの96 DPI論理サイズ換算
 - 2行非画像帯と4行末尾余白
 - 虫食い候補と末尾fallback
 - 入力値のguard

@@ -142,7 +142,9 @@ public sealed class CaseLayoutAnalyzer
         group.Key,
         group.Any(anchor => anchor.HasValueInColumnA),
         group.Any(anchor => anchor.HasValueInColumnB),
-        group.Any(anchor => anchor.HasTopBorder)))
+        group.Any(anchor => anchor.HasTopBorder),
+        group.Select(anchor => anchor.ColumnAValue).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+        group.Select(anchor => anchor.ColumnBValue).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))))
       .OrderBy(anchor => anchor.Row)
       .ToList();
 

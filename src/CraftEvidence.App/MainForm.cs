@@ -294,7 +294,7 @@ public sealed class MainForm : Form
     var captureHelp = new Label
     {
       AutoSize = true,
-      Text = "Ctrl+Shift+Eで画面を選択し、通常／編集／自動配置を選びます。Win+Shift+Sも利用できます。",
+      Text = "Ctrl+Shift+Eで画面を選択し、編集の有無を選びます。配置先は自動判定されます。Win+Shift+Sも利用できます。",
     };
     captureScreenButton.Text = "画面をキャプチャ";
     captureScreenButton.AutoSize = true;
@@ -678,51 +678,72 @@ public sealed class MainForm : Form
     var worksheetName = string.IsNullOrWhiteSpace(worksheetNameBox.Text)
       ? "ActiveSheet"
       : worksheetNameBox.Text.Trim();
-    using var preview = new PreviewDialog(
-      new Bitmap(image),
-      workbook?.DisplayLabel ?? "未選択",
-      worksheetName,
-      SelectedSide,
-      workbook is not null);
-    clipboardPreviewOpen = true;
-    DialogResult previewResult;
+    var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CraftEvidence");
+    var imagePath = Path.Combine(temporaryDirectory, $"preview-{Guid.NewGuid():N}.png");
     try
     {
-      previewResult = preview.ShowDialog(this);
-    }
-    finally
-    {
-      clipboardPreviewOpen = false;
-    }
+      Directory.CreateDirectory(temporaryDirectory);
+      using var imageCopy = new Bitmap(image);
+      imageCopy.Save(imagePath, ImageFormat.Png);
+      var request = new AutomaticPlacementImage(imagePath, ToImageDimensions(imageCopy));
+      SetStatus("配置予定のCase／Sideを解析しています…");
+      var analysis = workbook is null
+        ? AutomaticPlacementAnalysisResult.Failed("Workbookが選択されていません。")
+        : await StaTask.Run(() => automaticPlacementService.Analyze(
+          workbook,
+          worksheetName,
+          SelectedSide,
+          [request],
+          preferActiveGap: true,
+          horizontalMarginPoints: settings.HorizontalMarginPoints));
 
-    if (previewResult == DialogResult.Yes && workbook is not null)
-    {
-      await PlaceClipboardImageAsync(workbook, worksheetName, SelectedSide, image);
-    }
-    else if (previewResult == DialogResult.Retry && workbook is not null)
-    {
-      using var editor = new ImageEditorDialog(image);
-      if (editor.ShowDialog(this) == DialogResult.OK)
+      using var preview = new PreviewDialog(
+        new Bitmap(image),
+        workbook?.DisplayLabel ?? "未選択",
+        worksheetName,
+        SelectedSide,
+        analysis);
+      clipboardPreviewOpen = true;
+      DialogResult previewResult;
+      try
       {
-        using var editedImage = editor.GetEditedImage();
-        await PlaceClipboardImageAsync(workbook, worksheetName, SelectedSide, editedImage);
+        previewResult = preview.ShowDialog(this);
+      }
+      finally
+      {
+        clipboardPreviewOpen = false;
+      }
+
+      if (previewResult == DialogResult.Yes && workbook is not null)
+      {
+        await PlaceClipboardImageAutomaticallyAsync(
+          workbook, worksheetName, SelectedSide, image, true, imagePath, analysis);
+        imagePath = string.Empty;
+      }
+      else if (previewResult == DialogResult.Retry && workbook is not null)
+      {
+        using var editor = new ImageEditorDialog(image);
+        if (editor.ShowDialog(this) == DialogResult.OK)
+        {
+          using var editedImage = editor.GetEditedImage();
+          await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, editedImage, true);
+        }
+        else
+        {
+          SetStatus("画像編集をキャンセルしました。Excelは変更していません。");
+        }
       }
       else
       {
-        SetStatus("画像編集をキャンセルしました。Excelは変更していません。");
+        SetStatus($"{sourceLabel}画像を確認しました。Excelは変更していません。");
       }
     }
-    else if (previewResult == DialogResult.OK && workbook is not null)
+    finally
     {
-      await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, image, true);
-    }
-    else if (previewResult == DialogResult.Ignore && workbook is not null)
-    {
-      await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, image, false);
-    }
-    else
-    {
-      SetStatus($"{sourceLabel}画像を確認しました。Excelは変更していません。");
+      if (!string.IsNullOrEmpty(imagePath))
+      {
+        try { File.Delete(imagePath); } catch (IOException) { }
+      }
     }
   }
 
@@ -754,7 +775,9 @@ public sealed class MainForm : Form
     string worksheetName,
     EvidenceSide side,
     Image image,
-    bool preferActiveGap)
+    bool preferActiveGap,
+    string? preparedImagePath = null,
+    AutomaticPlacementAnalysisResult? preparedAnalysis = null)
   {
     if (!TryBeginMutation())
     {
@@ -762,12 +785,15 @@ public sealed class MainForm : Form
     }
 
     var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CraftEvidence");
-    var imagePath = Path.Combine(temporaryDirectory, $"automatic-{Guid.NewGuid():N}.png");
+    var imagePath = preparedImagePath ?? Path.Combine(temporaryDirectory, $"automatic-{Guid.NewGuid():N}.png");
     try
     {
-      Directory.CreateDirectory(temporaryDirectory);
       using var imageCopy = new Bitmap(image);
-      imageCopy.Save(imagePath, ImageFormat.Png);
+      if (preparedImagePath is null)
+      {
+        Directory.CreateDirectory(temporaryDirectory);
+        imageCopy.Save(imagePath, ImageFormat.Png);
+      }
       var dimensions = ToImageDimensions(imageCopy);
       SetStatus("Case／Sideを解析して自動配置しています…");
       var result = await StaTask.Run(() => automaticPlacementService.PlaceImages(
@@ -776,7 +802,8 @@ public sealed class MainForm : Form
         side,
         [new AutomaticPlacementImage(imagePath, dimensions)],
         preferActiveGap,
-        settings.HorizontalMarginPoints));
+        settings.HorizontalMarginPoints,
+        preparedAnalysis));
       SetStatus(result.Message);
       if (!result.Succeeded)
       {
@@ -902,21 +929,9 @@ public sealed class MainForm : Form
 
   private static ImageDimensions ToImageDimensions(Image image)
   {
-    var horizontalDpi = image.HorizontalResolution;
-    var verticalDpi = image.VerticalResolution;
-    if (!float.IsFinite(horizontalDpi) || horizontalDpi <= 0)
-    {
-      horizontalDpi = 96;
-    }
-
-    if (!float.IsFinite(verticalDpi) || verticalDpi <= 0)
-    {
-      verticalDpi = 96;
-    }
-
-    return new ImageDimensions(
-      image.Width * 72.0 / horizontalDpi,
-      image.Height * 72.0 / verticalDpi);
+    // Screen captures are pixel data. Image DPI metadata varies by monitor and
+    // encoder and must not change their visible size in Excel.
+    return ScreenImageSizing.FromPixels(image.Width, image.Height);
   }
 
   private async Task InsertRowsAsync()

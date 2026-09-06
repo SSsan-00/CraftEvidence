@@ -8,6 +8,24 @@ namespace CraftEvidence.Tests;
 public sealed class AutomaticPlacementServiceTests
 {
   [TestMethod]
+  public void AnalyzeSnapshot_ExposesCurrentCaseLabelForPreview()
+  {
+    var signals = FixtureLoader.LoadLayout("default-final-case.json");
+    var snapshot = Snapshot(signals with
+    {
+      Anchors = [new CaseAnchorSignal(3, true, true, false, "1", "1")],
+    });
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))]);
+
+    Assert.IsTrue(result.Succeeded, result.Message);
+    Assert.AreEqual("1-1", result.CaseLabel);
+  }
+
+  [TestMethod]
   public void AnalyzeSnapshot_MultipleImages_UsesGapThenStacksWithRequiredBand()
   {
     var signals = FixtureLoader.LoadLayout("default-final-case.json");

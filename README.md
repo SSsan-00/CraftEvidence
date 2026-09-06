@@ -1,6 +1,6 @@
 # CraftEvidence
 
-Case&Evidence形式のExcelブックへスクリーンショットを安全に配置するWindowsデスクトップツールです。`0.1.0-preview.13` は完成仕様レビュー候補です。
+Case&Evidence形式のExcelブックへスクリーンショットを安全に配置するWindowsデスクトップツールです。`0.1.0-preview.14` は完成仕様レビュー候補です。
 
 ## 実装済み
 
@@ -32,7 +32,7 @@ dotnet test .\tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj -c Release --
 
 1. Excelで対象ブックとシートを開き、書き込み先Case内のセルを選択します。
 2. CraftEvidenceでWorkbook、Sheet、New/Oldを選びます。
-3. `Ctrl + Shift + E`または「画面をキャプチャ」で範囲を選び、通常配置・編集配置・自動配置・末尾配置を選びます。従来の`Win + Shift + S`も利用できます。
+3. `Ctrl + Shift + E`または「画面をキャプチャ」で範囲を選び、表示された配置予定（Sheet、Case、Side、開始セル、追加行数、画像幅）を確認して、編集の有無だけを選びます。配置先は自動判定されます。従来の`Win + Shift + S`も利用できます。
 4. 管理画像をExcelで1つ選択すると差し替え・削除できます。`Ctrl+Z` / `Ctrl+Y` または画面ボタンで履歴を操作します。
 5. 内容を確認後、保存はExcel側で明示的に行います。
 

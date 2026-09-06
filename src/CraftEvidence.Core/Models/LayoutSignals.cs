@@ -5,7 +5,9 @@ public sealed record CaseAnchorSignal(
   int Row,
   bool HasValueInColumnA,
   bool HasValueInColumnB,
-  bool HasTopBorder)
+  bool HasTopBorder,
+  string? ColumnAValue = null,
+  string? ColumnBValue = null)
 {
   public bool HasCaseValue => HasValueInColumnA || HasValueInColumnB;
 }

@@ -355,7 +355,9 @@ public sealed class ExcelSheetSnapshotService
         row,
         hasA,
         hasB,
-        result.Count > 0 && HasRangeBorder(worksheet, row, 1, row, lastColumn, XlEdgeTop)));
+        result.Count > 0 && HasRangeBorder(worksheet, row, 1, row, lastColumn, XlEdgeTop),
+        DisplayValue(MatrixValue(values, row, 1, firstRow, firstColumn, rowCount, columnCount)),
+        DisplayValue(MatrixValue(values, row, 2, firstRow, firstColumn, rowCount, columnCount))));
     }
 
     return result;
@@ -749,6 +751,18 @@ public sealed class ExcelSheetSnapshotService
     value is not null &&
     value is not DBNull &&
     (value is not string text || !string.IsNullOrWhiteSpace(text));
+
+  private static string? DisplayValue(object? value)
+  {
+    var text = Convert.ToString(value, CultureInfo.CurrentCulture)?.Trim();
+    if (string.IsNullOrEmpty(text))
+    {
+      return null;
+    }
+
+    text = string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    return text.Length <= 60 ? text : $"{text[..57]}...";
+  }
 
   private static object ResolveWorksheet(
     object application,
