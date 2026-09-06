@@ -1,6 +1,6 @@
 # CraftEvidence 仕様書
 
-- 版: 0.1.0-preview.17
+- 版: 0.1.0-preview.18
 - 状態: 完成仕様レビュー候補
 - 更新日: 2026-09-06
 
@@ -14,6 +14,7 @@ Case&Evidence が生成した Excel エビデンスシートへ、Windows のス
 
 - 起動中 Excel Workbook の読み取り専用列挙
 - ActiveCell を基点とした Case 候補の解析モデル
+- Workbook選択時に判定したSheet名とCase番号を編集可能な入力欄へ表示し、指定Caseをアンカー値から再解決すること
 - 動的な New/Old 列境界の解析モデル
 - 画像の横幅優先縮小
 - 画像間2行の非画像帯とCase末尾4行を考慮した配置計画

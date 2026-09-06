@@ -24,6 +24,7 @@ public sealed class MainForm : Form
   private readonly DiagnosticLog diagnosticLog = new();
   private readonly ComboBox workbookSelector = new();
   private readonly TextBox worksheetNameBox = new();
+  private readonly TextBox caseLabelBox = new();
   private readonly NumericUpDown insertRowCountBox = new();
   private readonly TextBox deleteCaseStartBox = new();
   private readonly TextBox deleteCaseEndBox = new();
@@ -60,6 +61,9 @@ public sealed class MainForm : Form
   private GlobalShortcutRegistration? globalShortcut;
   private int mutationInProgress;
   private bool screenCaptureInProgress;
+  private int placementContextRequestVersion;
+  private bool updatingPlacementContext;
+  private bool caseLabelOverridden;
 
   private bool CanUpdateUi =>
     IsHandleCreated &&
@@ -197,6 +201,7 @@ public sealed class MainForm : Form
     workbookSelector.Dock = DockStyle.Fill;
     workbookSelector.DropDownStyle = ComboBoxStyle.DropDownList;
     workbookSelector.DisplayMember = nameof(WorkbookIdentity.DisplayLabel);
+    workbookSelector.SelectedIndexChanged += async (_, _) => await RefreshPlacementContextAsync();
     layout.Controls.Add(workbookSelector, 1, 1);
 
     refreshButton.Text = "更新";
@@ -219,6 +224,17 @@ public sealed class MainForm : Form
     nextCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Next);
     sidePanel.Controls.Add(previousCaseButton);
     sidePanel.Controls.Add(nextCaseButton);
+    sidePanel.Controls.Add(new Label { AutoSize = true, Text = "Case", Margin = new Padding(12, 7, 4, 0) });
+    caseLabelBox.Width = 100;
+    caseLabelBox.PlaceholderText = "自動判定";
+    caseLabelBox.TextChanged += (_, _) =>
+    {
+      if (!updatingPlacementContext)
+      {
+        caseLabelOverridden = true;
+      }
+    };
+    sidePanel.Controls.Add(caseLabelBox);
     layout.Controls.Add(sidePanel, 1, 2);
     layout.SetColumnSpan(sidePanel, 2);
 
@@ -342,6 +358,57 @@ public sealed class MainForm : Form
     Font = new Font("Meiryo UI", 9F, FontStyle.Bold),
     Anchor = AnchorStyles.Left,
   };
+
+  private async Task RefreshPlacementContextAsync()
+  {
+    var requestVersion = Interlocked.Increment(ref placementContextRequestVersion);
+    if (workbookSelector.SelectedItem is not WorkbookIdentity workbook ||
+      Volatile.Read(ref mutationInProgress) != 0)
+    {
+      return;
+    }
+
+    var analysis = await StaTask.Run(() => automaticPlacementService.Analyze(
+      workbook,
+      "ActiveSheet",
+      SelectedSide,
+      [new AutomaticPlacementImage("context", new ImageDimensions(1, 1))],
+      preferActiveGap: true,
+      horizontalMarginPoints: settings.HorizontalMarginPoints));
+    if (requestVersion != Volatile.Read(ref placementContextRequestVersion) || !CanUpdateUi)
+    {
+      return;
+    }
+
+    if (analysis.Succeeded)
+    {
+      SetPlacementContext(analysis);
+    }
+    else
+    {
+      SetStatus($"配置先を解析できません: {analysis.Message}");
+    }
+  }
+
+  private string? RequestedCaseLabel =>
+    caseLabelOverridden && !string.IsNullOrWhiteSpace(caseLabelBox.Text)
+      ? caseLabelBox.Text.Trim()
+      : null;
+
+  private void SetPlacementContext(AutomaticPlacementAnalysisResult analysis)
+  {
+    updatingPlacementContext = true;
+    try
+    {
+      worksheetNameBox.Text = analysis.WorksheetName;
+      caseLabelBox.Text = analysis.CaseLabel;
+      caseLabelOverridden = false;
+    }
+    finally
+    {
+      updatingPlacementContext = false;
+    }
+  }
 
   private void ShowSettings()
   {
@@ -678,6 +745,7 @@ public sealed class MainForm : Form
     var worksheetName = string.IsNullOrWhiteSpace(worksheetNameBox.Text)
       ? "ActiveSheet"
       : worksheetNameBox.Text.Trim();
+    var requestedCaseLabel = RequestedCaseLabel;
     var temporaryDirectory = Path.Combine(Path.GetTempPath(), "CraftEvidence");
     var imagePath = Path.Combine(temporaryDirectory, $"preview-{Guid.NewGuid():N}.png");
     try
@@ -695,7 +763,13 @@ public sealed class MainForm : Form
           SelectedSide,
           [request],
           preferActiveGap: true,
-          horizontalMarginPoints: settings.HorizontalMarginPoints));
+          horizontalMarginPoints: settings.HorizontalMarginPoints,
+          requestedCaseLabel: requestedCaseLabel));
+
+      if (analysis.Succeeded)
+      {
+        SetPlacementContext(analysis);
+      }
 
       using var preview = new PreviewDialog(
         new Bitmap(image),
@@ -717,7 +791,7 @@ public sealed class MainForm : Form
       if (previewResult == DialogResult.Yes && workbook is not null)
       {
         await PlaceClipboardImageAutomaticallyAsync(
-          workbook, worksheetName, SelectedSide, image, true, imagePath, analysis);
+          workbook, worksheetName, SelectedSide, image, true, requestedCaseLabel, imagePath, analysis);
         imagePath = string.Empty;
       }
       else if (previewResult == DialogResult.Retry && workbook is not null)
@@ -726,7 +800,8 @@ public sealed class MainForm : Form
         if (editor.ShowDialog(this) == DialogResult.OK)
         {
           using var editedImage = editor.GetEditedImage();
-          await PlaceClipboardImageAutomaticallyAsync(workbook, worksheetName, SelectedSide, editedImage, true);
+          await PlaceClipboardImageAutomaticallyAsync(
+            workbook, worksheetName, SelectedSide, editedImage, true, requestedCaseLabel);
         }
         else
         {
@@ -776,6 +851,7 @@ public sealed class MainForm : Form
     EvidenceSide side,
     Image image,
     bool preferActiveGap,
+    string? requestedCaseLabel = null,
     string? preparedImagePath = null,
     AutomaticPlacementAnalysisResult? preparedAnalysis = null)
   {
@@ -803,7 +879,8 @@ public sealed class MainForm : Form
         [new AutomaticPlacementImage(imagePath, dimensions)],
         preferActiveGap,
         settings.HorizontalMarginPoints,
-        preparedAnalysis));
+        preparedAnalysis,
+        requestedCaseLabel));
       SetStatus(result.Message);
       if (!result.Succeeded)
       {
@@ -1029,7 +1106,8 @@ public sealed class MainForm : Form
         side,
         requests,
         preferActiveGap: true,
-        horizontalMarginPoints: settings.HorizontalMarginPoints));
+        horizontalMarginPoints: settings.HorizontalMarginPoints,
+        requestedCaseLabel: RequestedCaseLabel));
       SetStatus(result.Message);
       if (result.Succeeded)
       {

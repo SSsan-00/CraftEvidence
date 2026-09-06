@@ -1,4 +1,4 @@
-# 0.1.0-preview.17 実装・再レビュー状態
+# 0.1.0-preview.18 実装・再レビュー状態
 
 - 状態: 完成仕様レビュー候補
 - 検証日: 2026-09-06
@@ -39,6 +39,8 @@
 | 実Evidenceブック構造の回帰不足 | 個別EvidenceのC:Q／R:AF、30行Case、書式末尾を含む422行UsedRangeと392行論理終端をFixture化 |
 | 選択できるブックで「Workbook close monitoring is unavailable」となり解析不能 | 終了イベント監視を補助機能とし、操作時のブック名・パス・Excel PID・HWND・ネイティブ接続トークン照合を必須の安全境界へ変更 |
 | `EnableEvents=false` 後に配置不能となり、続けて再オープン誤判定 | イベント無効を接続切断として扱う処理を削除。直接照合で操作し、元のイベント状態を復元する。無効状態でフォーカス・配置・Undoする実Excel回帰試験を追加 |
+| `Excel snapshot capture failed (0x80020003)` の原因箇所が不明 | ROT内の無関係な取得不能モニカーを読み飛ばし、対象Workbook内の失敗はSnapshot取得段階を表示するよう変更 |
+| 入力画面が `ActiveSheet` のままでCase指定不可 | Workbook選択時に実Sheet名とActiveCell所属Caseを表示。Sheet名とCase番号を編集可能にし、Caseアンカーの完全一致で配置先を変更 |
 
 ## 安全境界
 

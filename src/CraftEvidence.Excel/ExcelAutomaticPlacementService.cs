@@ -38,7 +38,8 @@ public sealed class ExcelAutomaticPlacementService
     EvidenceSide side,
     IReadOnlyList<AutomaticPlacementImage> images,
     bool preferActiveGap = true,
-    double horizontalMarginPoints = 6)
+    double horizontalMarginPoints = 6,
+    string? requestedCaseLabel = null)
   {
     ArgumentNullException.ThrowIfNull(workbook);
     ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
@@ -61,6 +62,28 @@ public sealed class ExcelAutomaticPlacementService
     }
 
     var snapshot = captured.Snapshot;
+    var selectedCase = ResolveRequestedCase(snapshot, requestedCaseLabel);
+    if (!selectedCase.Succeeded)
+    {
+      return AutomaticPlacementAnalysisResult.Failed(selectedCase.Message);
+    }
+
+    if (selectedCase.Row != snapshot.ActiveCell.Row)
+    {
+      captured = snapshotService.Capture(workbook, snapshot.WorksheetName, selectedCase.Row);
+      if (!captured.Succeeded || captured.Snapshot is null)
+      {
+        return AutomaticPlacementAnalysisResult.Failed(captured.Message);
+      }
+
+      snapshot = captured.Snapshot;
+    }
+
+    snapshot = snapshot with
+    {
+      ActiveCell = new CellReference(selectedCase.Row, snapshot.ActiveCell.Column),
+      LayoutSignals = snapshot.LayoutSignals with { ActiveRow = selectedCase.Row },
+    };
     if (snapshot.IsReadOnly || snapshot.IsProtected)
     {
       return AutomaticPlacementAnalysisResult.Failed(
@@ -76,7 +99,8 @@ public sealed class ExcelAutomaticPlacementService
     EvidenceSide side,
     IReadOnlyList<AutomaticPlacementImage> images,
     bool preferActiveGap = true,
-    double horizontalMarginPoints = 6)
+    double horizontalMarginPoints = 6,
+    string? requestedCaseLabel = null)
   {
     ArgumentNullException.ThrowIfNull(snapshot);
     ArgumentNullException.ThrowIfNull(images);
@@ -91,6 +115,18 @@ public sealed class ExcelAutomaticPlacementService
       return AutomaticPlacementAnalysisResult.Failed(
         snapshot.IsReadOnly ? "対象Workbookは読み取り専用です。" : $"シート {snapshot.WorksheetName} は保護されています。");
     }
+
+    var selectedCase = ResolveRequestedCase(snapshot, requestedCaseLabel);
+    if (!selectedCase.Succeeded)
+    {
+      return AutomaticPlacementAnalysisResult.Failed(selectedCase.Message);
+    }
+
+    snapshot = snapshot with
+    {
+      ActiveCell = new CellReference(selectedCase.Row, snapshot.ActiveCell.Column),
+      LayoutSignals = snapshot.LayoutSignals with { ActiveRow = selectedCase.Row },
+    };
 
     var analyzed = layoutAnalyzer.Analyze(snapshot.LayoutSignals);
     if (!analyzed.IsSafe || analyzed.Layout is null)
@@ -128,6 +164,7 @@ public sealed class ExcelAutomaticPlacementService
         plans,
         Fingerprint(snapshot),
         ResolveCaseLabel(snapshot, analyzed.Layout!.StartRow),
+        snapshot.ActiveCell.Row,
         $"{snapshot.WorksheetName} の{side}側へ{plans.Count}件を配置する計画を作成しました。");
     }
     catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or OverflowException)
@@ -144,7 +181,8 @@ public sealed class ExcelAutomaticPlacementService
     IReadOnlyList<AutomaticPlacementImage> images,
     bool preferActiveGap = true,
     double horizontalMarginPoints = 6,
-    AutomaticPlacementAnalysisResult? preparedAnalysis = null)
+    AutomaticPlacementAnalysisResult? preparedAnalysis = null,
+    string? requestedCaseLabel = null)
   {
     var validation = ValidateImages(images, requireFiles: true);
     if (validation is not null)
@@ -152,7 +190,14 @@ public sealed class ExcelAutomaticPlacementService
       return AutomaticPlacementResult.Failed(validation);
     }
 
-    var initialAnalysis = preparedAnalysis ?? Analyze(workbook, worksheetName, side, images, preferActiveGap, horizontalMarginPoints);
+    var initialAnalysis = preparedAnalysis ?? Analyze(
+      workbook,
+      worksheetName,
+      side,
+      images,
+      preferActiveGap,
+      horizontalMarginPoints,
+      requestedCaseLabel);
     if (!initialAnalysis.Succeeded)
     {
       return AutomaticPlacementResult.Failed(initialAnalysis.Message, initialAnalysis);
@@ -229,9 +274,18 @@ public sealed class ExcelAutomaticPlacementService
     WorkbookIdentity workbook,
     AutomaticPlacementAnalysisResult expected)
   {
-    var current = snapshotService.Capture(workbook, expected.WorksheetName);
-    return current.Succeeded && current.Snapshot is not null &&
-      string.Equals(Fingerprint(current.Snapshot), expected.SnapshotFingerprint, StringComparison.Ordinal);
+    var current = snapshotService.Capture(workbook, expected.WorksheetName, expected.AnalysisRow);
+    if (!current.Succeeded || current.Snapshot is null)
+    {
+      return false;
+    }
+
+    var normalized = current.Snapshot with
+    {
+      ActiveCell = new CellReference(expected.AnalysisRow, current.Snapshot.ActiveCell.Column),
+      LayoutSignals = current.Snapshot.LayoutSignals with { ActiveRow = expected.AnalysisRow },
+    };
+    return string.Equals(Fingerprint(normalized), expected.SnapshotFingerprint, StringComparison.Ordinal);
   }
 
   private static bool AnalysisMatchesRequest(
@@ -246,10 +300,35 @@ public sealed class ExcelAutomaticPlacementService
   private static string ResolveCaseLabel(SheetSnapshot snapshot, int startRow)
   {
     var anchor = snapshot.LayoutSignals.Anchors.Last(anchor => anchor.Row <= startRow);
+    return CaseLabel(anchor);
+  }
+
+  private static RequestedCaseResolution ResolveRequestedCase(
+    SheetSnapshot snapshot,
+    string? requestedCaseLabel)
+  {
+    if (string.IsNullOrWhiteSpace(requestedCaseLabel))
+    {
+      return new RequestedCaseResolution(true, snapshot.ActiveCell.Row, string.Empty);
+    }
+
+    var matches = snapshot.LayoutSignals.Anchors
+      .Where(anchor => string.Equals(CaseLabel(anchor), requestedCaseLabel.Trim(), StringComparison.CurrentCultureIgnoreCase))
+      .ToArray();
+    return matches.Length switch
+    {
+      1 => new RequestedCaseResolution(true, matches[0].Row, string.Empty),
+      0 => new RequestedCaseResolution(false, 0, $"Case '{requestedCaseLabel.Trim()}' が見つかりません。"),
+      _ => new RequestedCaseResolution(false, 0, $"Case '{requestedCaseLabel.Trim()}' が複数あるため選択できません。"),
+    };
+  }
+
+  private static string CaseLabel(CaseAnchorSignal anchor)
+  {
     var values = new[] { anchor.ColumnAValue, anchor.ColumnBValue }
       .Where(value => !string.IsNullOrWhiteSpace(value));
     var label = string.Join("-", values);
-    return string.IsNullOrWhiteSpace(label) ? $"開始行 {startRow}" : label;
+    return string.IsNullOrWhiteSpace(label) ? $"開始行 {anchor.Row}" : label;
   }
 
   private static RowInsertion ResolveAppliedInsertion(int currentCaseEnd, RowInsertion insertion)
@@ -457,6 +536,8 @@ public sealed class ExcelAutomaticPlacementService
 
     contents.Add(new ContentSpan(side, plan.StartRow, plan.EndRow, ContentKind.ManagedImage));
   }
+
+  private sealed record RequestedCaseResolution(bool Succeeded, int Row, string Message);
 }
 
 public sealed record AutomaticPlacementImage(string ImagePath, ImageDimensions Dimensions);
@@ -474,10 +555,11 @@ public sealed record AutomaticPlacementAnalysisResult(
   IReadOnlyList<AutomaticPlacementStep> Steps,
   string SnapshotFingerprint,
   string CaseLabel,
+  int AnalysisRow,
   string Message)
 {
   public static AutomaticPlacementAnalysisResult Failed(string message) =>
-    new(false, string.Empty, null, [], string.Empty, string.Empty, message);
+    new(false, string.Empty, null, [], string.Empty, string.Empty, 0, message);
 }
 
 public sealed record AppliedRowInsertion(string WorksheetName, int StartRow, int Count, string Reason);

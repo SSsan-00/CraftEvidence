@@ -48,17 +48,37 @@ public sealed class ExcelSheetSnapshotService
         object? runningObject = null;
         try
         {
-          monikers[0].GetDisplayName(bindContext, null, out var displayName);
+          string displayName;
+          try
+          {
+            monikers[0].GetDisplayName(bindContext, null, out displayName);
+          }
+          catch (Exception exception) when (IsAutomationFailure(exception))
+          {
+            // The ROT contains objects unrelated to the selected Excel instance.
+            // A broken unrelated moniker must not abort capture of the target Workbook.
+            continue;
+          }
+
           if (!string.Equals(displayName, workbook.RotMonikerDisplayName, StringComparison.Ordinal))
           {
             continue;
           }
 
-          runningObjectTable.GetObject(monikers[0], out runningObject);
-          return runningObject is null
-            ? SheetSnapshotResult.Failed(worksheetName, "The selected Workbook is no longer available.")
-            : TryCaptureRunningObject(runningObject, workbook, worksheetName, scopeRow) ??
-              SheetSnapshotResult.Failed(worksheetName, "The selected Workbook could not be matched.");
+          try
+          {
+            runningObjectTable.GetObject(monikers[0], out runningObject);
+            return runningObject is null
+              ? SheetSnapshotResult.Failed(worksheetName, "The selected Workbook is no longer available.")
+              : TryCaptureRunningObject(runningObject, workbook, worksheetName, scopeRow) ??
+                SheetSnapshotResult.Failed(worksheetName, "The selected Workbook could not be matched.");
+          }
+          catch (Exception exception) when (IsAutomationFailure(exception))
+          {
+            return SheetSnapshotResult.Failed(
+              worksheetName,
+              $"Excel snapshot capture failed for the selected Workbook (0x{GetAutomationHResult(exception):X8}).");
+          }
         }
         finally
         {
@@ -168,13 +188,16 @@ public sealed class ExcelSheetSnapshotService
     object? usedColumns = null;
     var eventsWereEnabled = false;
     var applicationStateRead = false;
+    var captureStage = "validating the Workbook window";
     try
     {
+      captureStage = "reading Excel application state";
       eventsWereEnabled = Convert.ToBoolean(
         GetRequiredProperty(application, "EnableEvents"),
         CultureInfo.InvariantCulture);
       applicationStateRead = true;
       SetProperty(application, "EnableEvents", false);
+      captureStage = "resolving the target worksheet";
       worksheet = ResolveWorksheet(application, workbook, worksheetName, out var resolvedName);
       workbookActiveSheet = GetRequiredProperty(workbook, "ActiveSheet");
       var activeSheetName = Convert.ToString(
@@ -187,6 +210,7 @@ public sealed class ExcelSheetSnapshotService
           "対象SheetをExcelでアクティブにしてから再解析してください。");
       }
 
+      captureStage = "reading the active cell and used range";
       windows = GetRequiredProperty(workbook, "Windows");
       window = GetRequiredProperty(windows, "Item", 1);
       activeCell = GetRequiredProperty(window, "RangeSelection");
@@ -211,6 +235,7 @@ public sealed class ExcelSheetSnapshotService
       }
 
       var activeReference = new CellReference(ReadInt(activeCell, "Row"), ReadInt(activeCell, "Column"));
+      captureStage = "reading worksheet values and formulas";
       var values = InvokeProperty(usedRange, "Value2");
       var formulas = InvokeProperty(usedRange, "Formula");
       var usedRangeHasNoMerges = TryGetProperty(usedRange, "MergeCells", out var mergeCells) &&
@@ -219,6 +244,7 @@ public sealed class ExcelSheetSnapshotService
       var comments = ReadLinkedCells(worksheet, "Comments");
       comments.UnionWith(ReadLinkedCells(worksheet, "CommentsThreaded", optional: true));
       var hyperlinks = ReadLinkedCells(worksheet, "Hyperlinks");
+      captureStage = "analyzing Case boundaries";
       var anchors = ReadAnchors(
         worksheet,
         values,
@@ -281,6 +307,7 @@ public sealed class ExcelSheetSnapshotService
         observedLastColumn,
         usedRangeHasNoMerges);
       var shapes = ReadShapes(worksheet);
+      captureStage = "reading row heights and column widths";
       var rowHeights = ReadRowHeights(worksheet, currentCaseFirstRow, currentCaseLastRow);
       var columnWidths = ReadColumnWidths(worksheet, NewFirstColumn, observedLastColumn);
       var signals = new SheetLayoutSignals(
@@ -316,6 +343,12 @@ public sealed class ExcelSheetSnapshotService
         rowHeights,
         columnWidths);
       return new SheetSnapshotResult(true, snapshot, $"{resolvedName} のライブSnapshotを取得しました。");
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      return SheetSnapshotResult.Failed(
+        worksheetName,
+        $"Excel snapshot capture failed while {captureStage} (0x{GetAutomationHResult(exception):X8}).");
     }
     finally
     {

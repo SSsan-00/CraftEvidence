@@ -26,6 +26,54 @@ public sealed class AutomaticPlacementServiceTests
   }
 
   [TestMethod]
+  public void AnalyzeSnapshot_RequestedCaseLabel_OverridesActiveCase()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var snapshot = Snapshot(source with
+    {
+      Anchors =
+      [
+        new CaseAnchorSignal(3, true, true, false, "1", "1"),
+        new CaseAnchorSignal(53, true, true, true, "1", "2"),
+      ],
+    });
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))],
+      requestedCaseLabel: "1-1");
+
+    Assert.IsTrue(result.Succeeded, result.Message);
+    Assert.AreEqual("1-1", result.CaseLabel);
+    Assert.AreEqual(3, result.AnalysisRow);
+    Assert.AreEqual(3, result.LayoutAnalysis!.Layout!.StartRow);
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_UnknownRequestedCaseLabel_FailsClearly()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var snapshot = Snapshot(source with
+    {
+      Anchors =
+      [
+        new CaseAnchorSignal(3, true, true, false, "1", "1"),
+        new CaseAnchorSignal(53, true, true, true, "1", "2"),
+      ],
+    });
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))],
+      requestedCaseLabel: "9-9");
+
+    Assert.IsFalse(result.Succeeded);
+    StringAssert.Contains(result.Message, "Case '9-9' が見つかりません");
+  }
+
+  [TestMethod]
   public void AnalyzeSnapshot_MultipleImages_UsesGapThenStacksWithRequiredBand()
   {
     var signals = FixtureLoader.LoadLayout("default-final-case.json");
