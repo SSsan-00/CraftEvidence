@@ -28,7 +28,7 @@ public sealed class WorkbookSessionTokenRegistryTests
   }
 
   [TestMethod]
-  public void InvalidateSessions_InvalidatesAllWorkbookIdentitiesForTheProcess()
+  public void InvalidateSessions_DisablesOptionalMonitoringButPreservesTokens()
   {
     var processId = NextProcessId();
     var token = new IntPtr(Interlocked.Decrement(ref nextProcessId));
@@ -42,7 +42,8 @@ public sealed class WorkbookSessionTokenRegistryTests
     ExcelApplicationSessionMonitor.InvalidateSessions(workbooks);
 
     Assert.IsFalse(WorkbookSessionTokenRegistry.IsProcessMonitored(processId));
-    Assert.IsFalse(WorkbookSessionTokenRegistry.IsValid(token));
+    Assert.IsTrue(WorkbookSessionTokenRegistry.IsValid(token));
+    WorkbookSessionTokenRegistry.InvalidateProcess(processId);
   }
 
   [TestMethod]

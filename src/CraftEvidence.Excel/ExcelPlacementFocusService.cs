@@ -30,15 +30,10 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
       return new FocusResult(false, "Excel focus must run on an STA thread.");
     }
 
-    if (!workbook.HasWorkbookRegistration ||
-      string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
+    if (string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName) ||
+      workbook.WindowSessionToken == IntPtr.Zero)
     {
       return new FocusResult(false, "The Workbook does not have a verifiable open session; refresh and select it again.");
-    }
-
-    if (!WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId))
-    {
-      return new FocusResult(false, "Workbook close monitoring is unavailable; refresh before focusing it.");
     }
 
     IRunningObjectTable? runningObjectTable = null;
@@ -279,8 +274,6 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
     return windowHandle == identity.ExcelWindowHandle &&
       documentWindowHandle == identity.ExcelDocumentWindowHandle &&
       processId == identity.ProcessId &&
-      WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) &&
-      WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken) &&
       NativeMethods.GetProp(documentWindowHandle, WorkbookSessionTokenRegistry.WindowPropertyName) ==
         identity.WindowSessionToken;
   }

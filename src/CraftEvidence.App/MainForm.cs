@@ -465,7 +465,7 @@ public sealed class MainForm : Form
       if (await Task.WhenAny(pendingMonitorTask, timeoutTask) != pendingMonitorTask)
       {
         InvalidateMonitorRequests(workbooks);
-        return ["Excel session monitoring timed out; focus is disabled."];
+        return ["Excel終了監視がタイムアウトしました。操作時の直接検証を使用します。"];
       }
 
       warnings.AddRange(await ConsumePendingMonitorAsync());
@@ -481,7 +481,7 @@ public sealed class MainForm : Form
     if (await Task.WhenAny(pendingMonitorTask, timeoutTask) != pendingMonitorTask)
     {
       InvalidateMonitorRequests(workbooks);
-      warnings.Add("Excel session monitoring timed out; focus is disabled.");
+      warnings.Add("Excel終了監視がタイムアウトしました。操作時の直接検証を使用します。");
       return warnings;
     }
 
@@ -500,7 +500,7 @@ public sealed class MainForm : Form
     catch (Exception exception) when (exception is not OutOfMemoryException)
     {
       sessionMonitor.InvalidateSessions(monitoredWorkbooks);
-      return [$"Excel session monitoring failed; focus is disabled: {exception.Message}"];
+      return [$"Excel終了監視に失敗しました。操作時の直接検証を使用します: {exception.Message}"];
     }
     finally
     {

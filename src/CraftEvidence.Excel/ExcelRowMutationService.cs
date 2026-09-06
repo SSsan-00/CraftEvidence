@@ -47,14 +47,12 @@ public sealed class ExcelRowMutationService
         "Excel row safety inspection must run on an STA thread.");
     }
 
-    if (!workbook.HasWorkbookRegistration ||
-      string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName) ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(workbook.WindowSessionToken))
+    if (string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName) ||
+      workbook.WindowSessionToken == IntPtr.Zero)
     {
       return RowSafetySnapshotResult.Failed(
         worksheetName,
-        "Workbook close monitoring is unavailable; refresh before inspecting rows.");
+        "Workbook connection is unavailable; refresh before inspecting rows.");
     }
 
     IRunningObjectTable? runningObjectTable = null;
@@ -377,8 +375,7 @@ public sealed class ExcelRowMutationService
         "The selected Workbook is read-only.");
     }
 
-    if (!workbook.HasWorkbookRegistration ||
-      string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
+    if (string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
     {
       return RowMutationResult.Failed(
         plan.Operation,
@@ -386,13 +383,12 @@ public sealed class ExcelRowMutationService
         "The Workbook does not have a verifiable open session; refresh and select it again.");
     }
 
-    if (!WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(workbook.WindowSessionToken))
+    if (workbook.WindowSessionToken == IntPtr.Zero)
     {
       return RowMutationResult.Failed(
         plan.Operation,
         worksheetName,
-        "Workbook close monitoring is unavailable; refresh before changing rows.");
+        "Workbook connection is unavailable; refresh before changing rows.");
     }
 
     IRunningObjectTable? runningObjectTable = null;
@@ -644,8 +640,7 @@ public sealed class ExcelRowMutationService
           $"シート {resolvedWorksheetName} は保護されています。保護を解除してから行を確認してください。");
       }
 
-      if (!WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) ||
-        !WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken) ||
+      if (!WorkbookWindowMatchesIdentity(workbook, identity) ||
         Convert.ToBoolean(GetRequiredProperty(workbook, "ReadOnly"), CultureInfo.InvariantCulture))
       {
         return RowSafetySnapshotResult.Failed(
@@ -1031,15 +1026,6 @@ public sealed class ExcelRowMutationService
           plan.Operation,
           resolvedWorksheetName,
           "The target Workbook window changed before the row mutation; no rows were changed.");
-      }
-
-      if (!WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) ||
-        !WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken))
-      {
-        return RowMutationResult.Failed(
-          plan.Operation,
-          resolvedWorksheetName,
-          "Workbook close monitoring changed before the row mutation; no rows were changed.");
       }
 
       if (Convert.ToBoolean(
@@ -1744,9 +1730,7 @@ public sealed class ExcelRowMutationService
 
   private static bool WorkbookWindowMatchesIdentity(object workbook, WorkbookIdentity identity)
   {
-    if (identity.WindowSessionToken == IntPtr.Zero ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken))
+    if (identity.WindowSessionToken == IntPtr.Zero)
     {
       return false;
     }
@@ -2021,9 +2005,7 @@ public sealed class RowDeletionSnapshot : IDisposable
   internal bool Matches(WorkbookIdentity workbook) =>
     workbook.ProcessId == ProcessId &&
     workbook.WindowSessionToken == WindowSessionToken &&
-    string.Equals(workbook.FullPath, WorkbookFullPath, StringComparison.OrdinalIgnoreCase) &&
-    WorkbookSessionTokenRegistry.IsProcessMonitored(ProcessId) &&
-    WorkbookSessionTokenRegistry.IsValid(WindowSessionToken);
+    string.Equals(workbook.FullPath, WorkbookFullPath, StringComparison.OrdinalIgnoreCase);
 
   public void Dispose()
   {

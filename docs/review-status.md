@@ -1,4 +1,4 @@
-# 0.1.0-preview.15 実装・再レビュー状態
+# 0.1.0-preview.16 実装・再レビュー状態
 
 - 状態: 完成仕様レビュー候補
 - 検証日: 2026-09-06
@@ -37,10 +37,11 @@
 | キャプチャ画像が小さい | 不安定な画像DPIメタデータではなくWindows論理96 DPIでpixelからpointへ換算 |
 | 実EvidenceブックでSnapshotが遅い | ActiveCellが属する30行のCaseだけを占有・行高走査し、結合セルがないUsedRangeではセル単位の結合確認を省略 |
 | 実Evidenceブック構造の回帰不足 | 個別EvidenceのC:Q／R:AF、30行Case、書式末尾を含む422行UsedRangeと392行論理終端をFixture化 |
+| 選択できるブックで「Workbook close monitoring is unavailable」となり解析不能 | 終了イベント監視を補助機能とし、操作時のブック名・パス・Excel PID・HWND・ネイティブ接続トークン照合を必須の安全境界へ変更 |
 
 ## 安全境界
 
-- Workbook identity、Window token、ReadOnly、Sheet保護、EnableEventsを変更直前に再検証する。
+- Workbook identity、Excel PID、Window handle、Window token、ReadOnly、Sheet保護、EnableEventsを変更直前に再検証する。終了イベント監視の有無だけでは操作を拒否しない。
 - Snapshot fingerprintが変化した場合は自動配置を中止する。
 - 複数ステップ配置は途中失敗時にShape→挿入行の逆順で補償する。
 - 削除対象行に値、数式、コメント、リンク、Shape、結合があれば削除しない。

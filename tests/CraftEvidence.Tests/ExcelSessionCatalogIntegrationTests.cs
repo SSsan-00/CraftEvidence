@@ -395,6 +395,22 @@ public sealed class ExcelSessionCatalogIntegrationTests
         _ = InvokeMethod(originalOtherCell, "Select");
         SetProperty(application, "EnableEvents", true);
 
+        var directValidationIdentity = identity with { HasWorkbookRegistration = false };
+        WorkbookSessionTokenRegistry.MarkProcessUnmonitored(identity.ProcessId);
+        var unmonitoredSnapshot = RunExcelSta(() => new ExcelSheetSnapshotService().Capture(
+          directValidationIdentity,
+          "FocusTarget"));
+        Assert.IsTrue(unmonitoredSnapshot.Succeeded, unmonitoredSnapshot.Message);
+        var unmonitoredFocus = RunExcelSta(() => new ExcelPlacementFocusService().FocusPlacedImage(
+          directValidationIdentity,
+          "FocusTarget",
+          new CellReference(5, 3)));
+        Assert.IsTrue(unmonitoredFocus.Succeeded, unmonitoredFocus.Message);
+        Assert.HasCount(0, sessionMonitor.Refresh([identity]));
+        _ = InvokeMethod(otherWorkbook, "Activate");
+        _ = InvokeMethod(otherWorksheet, "Activate");
+        _ = InvokeMethod(originalOtherCell, "Select");
+
         var snapshotResult = RunExcelSta(() => new ExcelSheetSnapshotService().Capture(identity, "FocusTarget"));
         Assert.IsTrue(snapshotResult.Succeeded, snapshotResult.Message);
         Assert.IsNotNull(snapshotResult.Snapshot);
@@ -645,18 +661,18 @@ public sealed class ExcelSessionCatalogIntegrationTests
         cancelledCloseDisabledWarnings.Any(warning =>
           warning.Contains("events are disabled", StringComparison.OrdinalIgnoreCase)),
         string.Join(" | ", cancelledCloseDisabledWarnings));
-      Assert.IsFalse(
+      Assert.IsTrue(
         WorkbookSessionTokenRegistry.IsValid(cancelledSessionToken),
-        "Fail-closed monitoring must invalidate the token that was pending after a cancelled close.");
+        "Optional monitoring failure must preserve a directly verifiable open Workbook token.");
 
       SetProperty(application, "EnableEvents", true);
       var recoveredAfterCancelDiscovery = RunExcelSta(() => new ExcelSessionCatalog().Discover());
       var recoveredAfterCancelIdentity = recoveredAfterCancelDiscovery.Workbooks.Single(item =>
         string.Equals(item.FullPath, workbookPath, StringComparison.OrdinalIgnoreCase));
-      Assert.AreNotEqual(
+      Assert.AreEqual(
         cancelledSessionToken,
         recoveredAfterCancelIdentity.WindowSessionToken,
-        "Rediscovery after fail-closed monitoring must create a fresh session token.");
+        "Rediscovery must preserve the open Workbook window token when only monitoring failed.");
       var recoveredAfterCancelWarnings = sessionMonitor.Refresh(recoveredAfterCancelDiscovery.Workbooks);
       Assert.HasCount(0, recoveredAfterCancelWarnings, string.Join(" | ", recoveredAfterCancelWarnings));
       Thread.Sleep(750);
@@ -732,7 +748,7 @@ public sealed class ExcelSessionCatalogIntegrationTests
         reopenedIdentity,
         "FocusTarget",
         new CellReference(8, 7)));
-      Assert.IsFalse(disabledFocus.Succeeded, "Focus must fail closed while Workbook events are disabled.");
+      Assert.IsFalse(disabledFocus.Succeeded, "Focus must remain blocked while Excel events are disabled.");
 
       SetProperty(application, "EnableEvents", true);
       var enabledDiscovery = RunExcelSta(() => new ExcelSessionCatalog().Discover());

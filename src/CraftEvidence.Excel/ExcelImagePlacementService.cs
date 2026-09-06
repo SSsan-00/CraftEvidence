@@ -62,15 +62,14 @@ public sealed class ExcelImagePlacementService
       return ImagePlacementResult.Failed("The selected Workbook is read-only.");
     }
 
-    if (!workbook.HasWorkbookRegistration || string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
+    if (string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
     {
       return ImagePlacementResult.Failed("The Workbook does not have a verifiable open session; refresh and select it again.");
     }
 
-    if (!WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(workbook.WindowSessionToken))
+    if (workbook.WindowSessionToken == IntPtr.Zero)
     {
-      return ImagePlacementResult.Failed("Workbook close monitoring is unavailable; refresh before placing an image.");
+      return ImagePlacementResult.Failed("Workbook connection is unavailable; refresh before placing an image.");
     }
 
     if (!File.Exists(imagePath))
@@ -158,10 +157,8 @@ public sealed class ExcelImagePlacementService
     }
 
     if (workbook.IsReadOnly ||
-      !workbook.HasWorkbookRegistration ||
       string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName) ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(workbook.WindowSessionToken))
+      workbook.WindowSessionToken == IntPtr.Zero)
     {
       return ImageDeletionResult.Failed("Workbook session is not writable or verifiable; refresh before Undo.");
     }
@@ -661,9 +658,7 @@ public sealed class ExcelImagePlacementService
 
   private static bool WorkbookWindowMatchesIdentity(object workbook, WorkbookIdentity identity)
   {
-    if (identity.WindowSessionToken == IntPtr.Zero ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken))
+    if (identity.WindowSessionToken == IntPtr.Zero)
     {
       return false;
     }

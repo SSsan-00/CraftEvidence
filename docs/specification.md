@@ -1,6 +1,6 @@
 # CraftEvidence 仕様書
 
-- 版: 0.1.0-preview.15
+- 版: 0.1.0-preview.16
 - 状態: 完成仕様レビュー候補
 - 更新日: 2026-09-06
 
@@ -20,7 +20,8 @@ Case&Evidence が生成した Excel エビデンスシートへ、Windows のス
 - Clipboard画像の検知とプレビュー
 - 配置検証後の対象セルへのフォーカス（Excelイベントを抑止し、元の設定を復元）
 - ブックを閉じて同一パスを再オープンした場合の旧接続拒否
-- Excel監視が応答しない、イベントが無効、または監視世代が途切れた場合のfail-closed
+- Excel終了イベント監視が応答しない場合も、操作時にブック名・パス・Excel PID・ウィンドウ・接続トークンを直接照合して処理を継続すること
+- Excelイベントが無効、または操作時の直接照合で接続世代が一致しない場合のfail-closed
 - Close取消後に監視世代を再発行しても、古いClose監視が新しい接続を失効させないこと
 - Previewで明示承認した画像を、指定Sheet（`ActiveSheet`を含む）のWorkbook側ActiveCellへShapeとして配置すること
 - 配置後に対象Workbook／Sheet／セルを再検証して選択すること

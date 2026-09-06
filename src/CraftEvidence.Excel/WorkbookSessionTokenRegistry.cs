@@ -56,6 +56,14 @@ internal static class WorkbookSessionTokenRegistry
     }
   }
 
+  internal static void MarkProcessUnmonitored(uint processId)
+  {
+    lock (RegistryLock)
+    {
+      _ = MonitoredProcesses.Remove(processId);
+    }
+  }
+
   internal static bool Register(
     string workbookKey,
     uint processId,

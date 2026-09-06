@@ -765,15 +765,14 @@ public sealed class ExcelManagedShapeService
       return "対象Workbookは読み取り専用です。";
     }
 
-    if (!workbook.HasWorkbookRegistration || string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
+    if (string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName))
     {
       return "Workbookの接続を検証できません。一覧を更新してください。";
     }
 
-    if (!WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(workbook.WindowSessionToken))
+    if (workbook.WindowSessionToken == IntPtr.Zero)
     {
-      return "Workbook終了監視が無効です。一覧を更新してください。";
+      return "Workbook接続トークンがありません。一覧を更新してください。";
     }
 
     return null;
@@ -813,9 +812,7 @@ public sealed class ExcelManagedShapeService
 
   private static bool WorkbookWindowMatchesIdentity(object workbook, WorkbookIdentity identity)
   {
-    if (identity.WindowSessionToken == IntPtr.Zero ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken))
+    if (identity.WindowSessionToken == IntPtr.Zero)
     {
       return false;
     }

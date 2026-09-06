@@ -29,7 +29,7 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
     ArgumentNullException.ThrowIfNull(workbooks);
     foreach (var processId in workbooks.Select(item => item.ProcessId).Distinct())
     {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(processId);
+      WorkbookSessionTokenRegistry.MarkProcessUnmonitored(processId);
     }
   }
 
@@ -60,9 +60,9 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
       {
         if (!GetApplicationEventsEnabled(subscription.Value.Application))
         {
-          warnings.Add($"Excel events are disabled for process {subscription.Key}; focus is disabled.");
+          warnings.Add($"Excel events are disabled for process {subscription.Key}; enable events before operating on it.");
           failedProcessIds.Add(subscription.Key);
-          Detach(subscription.Key);
+          Detach(subscription.Key, invalidateTokens: false);
         }
         else
         {
@@ -75,7 +75,7 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
           $"Excel session monitoring validation failed for process {subscription.Key} " +
           $"(0x{GetAutomationHResult(exception):X8}).");
         failedProcessIds.Add(subscription.Key);
-        Detach(subscription.Key);
+        Detach(subscription.Key, invalidateTokens: false);
       }
     }
 
@@ -127,9 +127,9 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
 
           if (!GetApplicationEventsEnabled(application))
           {
-            warnings.Add($"Excel events are disabled for process {candidateProcessId}; focus is disabled.");
+            warnings.Add($"Excel events are disabled for process {candidateProcessId}; enable events before operating on it.");
             failedProcessIds.Add(candidateProcessId);
-            WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(candidateProcessId);
+            WorkbookSessionTokenRegistry.MarkProcessUnmonitored(candidateProcessId);
             continue;
           }
 
@@ -157,7 +157,7 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
           if (candidateProcessId != 0 && targetProcessIds.Contains(candidateProcessId))
           {
             failedProcessIds.Add(candidateProcessId);
-            WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(candidateProcessId);
+            WorkbookSessionTokenRegistry.MarkProcessUnmonitored(candidateProcessId);
           }
         }
         finally
@@ -191,8 +191,8 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
     foreach (var processId in targetProcessIds.Where(id =>
       !subscriptions.ContainsKey(id) && !failedProcessIds.Contains(id)))
     {
-      warnings.Add($"Excel session monitoring is unavailable for process {processId}; focus is disabled.");
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(processId);
+      warnings.Add($"Excel session monitoring is unavailable for process {processId}; direct validation remains available.");
+      WorkbookSessionTokenRegistry.MarkProcessUnmonitored(processId);
     }
 
     return warnings;
@@ -340,14 +340,21 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
     }
   }
 
-  private void Detach(uint processId)
+  private void Detach(uint processId, bool invalidateTokens = true)
   {
     if (!subscriptions.Remove(processId, out var subscription))
     {
       return;
     }
 
-    WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(processId);
+    if (invalidateTokens)
+    {
+      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(processId);
+    }
+    else
+    {
+      WorkbookSessionTokenRegistry.MarkProcessUnmonitored(processId);
+    }
 
     try
     {

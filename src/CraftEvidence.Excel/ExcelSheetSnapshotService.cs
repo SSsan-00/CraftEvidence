@@ -26,14 +26,12 @@ public sealed class ExcelSheetSnapshotService
       return SheetSnapshotResult.Failed(worksheetName, "Excel snapshot capture must run on an STA thread.");
     }
 
-    if (!workbook.HasWorkbookRegistration ||
-      string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName) ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(workbook.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(workbook.WindowSessionToken))
+    if (string.IsNullOrWhiteSpace(workbook.RotMonikerDisplayName) ||
+      workbook.WindowSessionToken == IntPtr.Zero)
     {
       return SheetSnapshotResult.Failed(
         worksheetName,
-        "Workbook close monitoring is unavailable; refresh before analyzing the worksheet.");
+        "Workbook connection is unavailable; refresh before analyzing the worksheet.");
     }
 
     IRunningObjectTable? runningObjectTable = null;
@@ -854,9 +852,7 @@ public sealed class ExcelSheetSnapshotService
 
   private static bool WorkbookWindowMatchesIdentity(object workbook, WorkbookIdentity identity)
   {
-    if (identity.WindowSessionToken == IntPtr.Zero ||
-      !WorkbookSessionTokenRegistry.IsProcessMonitored(identity.ProcessId) ||
-      !WorkbookSessionTokenRegistry.IsValid(identity.WindowSessionToken))
+    if (identity.WindowSessionToken == IntPtr.Zero)
     {
       return false;
     }
