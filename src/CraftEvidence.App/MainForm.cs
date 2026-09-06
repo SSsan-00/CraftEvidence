@@ -1155,6 +1155,14 @@ public sealed class MainForm : Form
           settings.HorizontalMarginPoints));
         if (!prepared.Succeeded)
         {
+          if (prepared.Insertion is not null)
+          {
+            _ = await RunRowHistoryOperationAsync(() => rowMutationService.DeleteRowsIfSafe(
+              workbook,
+              prepared.Insertion.WorksheetName,
+              prepared.Insertion.StartRow,
+              prepared.Insertion.Count));
+          }
           SetStatus(prepared.Message);
           return;
         }

@@ -82,8 +82,16 @@ public sealed class ExcelManagedReplacementLayoutService
       .Sum(pair => pair.Value) ?? 0;
     if (insertedHeight + 0.05 < extraHeight)
     {
-      _ = rowMutationService.DeleteRowsIfSafe(workbook, mutated.WorksheetName, mutated.StartRow, mutated.Count);
-      return ReplacementLayoutResult.Failed("追加行の実高が画像に不足したため、差し替えを中止して行を戻しました。");
+      var applied = new AppliedRowInsertion(mutated.WorksheetName, mutated.StartRow, mutated.Count, insertion.Reason);
+      var reverted = rowMutationService.DeleteRowsIfSafe(workbook, mutated.WorksheetName, mutated.StartRow, mutated.Count);
+      return reverted.Succeeded && reverted.Changed
+        ? ReplacementLayoutResult.Failed("追加行の実高が画像に不足したため、差し替えを中止して行を戻しました。")
+        : new ReplacementLayoutResult(
+          false,
+          fitted,
+          left,
+          applied,
+          "追加行の実高が画像に不足し、追加行の復旧にも失敗しました。Workbookを保存せず状態を確認してください。");
     }
 
     return new ReplacementLayoutResult(
