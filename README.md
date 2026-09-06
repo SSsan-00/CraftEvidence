@@ -1,6 +1,6 @@
 # CraftEvidence
 
-Case&Evidence形式のExcelブックへスクリーンショットを安全に配置するWindowsデスクトップツールです。`0.1.0-preview.16` は完成仕様レビュー候補です。
+Case&Evidence形式のExcelブックへスクリーンショットを安全に配置するWindowsデスクトップツールです。`0.1.0-preview.17` は完成仕様レビュー候補です。
 
 ## 実装済み
 

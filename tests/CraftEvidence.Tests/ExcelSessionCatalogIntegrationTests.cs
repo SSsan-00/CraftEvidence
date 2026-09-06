@@ -748,7 +748,30 @@ public sealed class ExcelSessionCatalogIntegrationTests
         reopenedIdentity,
         "FocusTarget",
         new CellReference(8, 7)));
-      Assert.IsFalse(disabledFocus.Succeeded, "Focus must remain blocked while Excel events are disabled.");
+      Assert.IsTrue(disabledFocus.Succeeded, disabledFocus.Message);
+      Assert.IsFalse(
+        Convert.ToBoolean(GetRequiredProperty(application, "EnableEvents"), CultureInfo.InvariantCulture),
+        "Focus must preserve the caller's disabled Excel event state.");
+      Assert.IsTrue(
+        WorkbookSessionTokenRegistry.IsValid(reopenedIdentity.WindowSessionToken),
+        "Disabled Excel events must not invalidate an otherwise open Workbook connection.");
+      var disabledPlacement = RunExcelSta(() => new ExcelImagePlacementService().PlaceImage(
+        reopenedIdentity,
+        "FocusTarget",
+        new CellReference(9, 4),
+        EvidenceSide.New,
+        placementImagePath,
+        new ImageDimensions(120, 60)));
+      Assert.IsTrue(disabledPlacement.Succeeded, disabledPlacement.Message);
+      Assert.IsTrue(disabledPlacement.FocusSucceeded, disabledPlacement.Message);
+      Assert.IsFalse(
+        Convert.ToBoolean(GetRequiredProperty(application, "EnableEvents"), CultureInfo.InvariantCulture),
+        "Placement must preserve the caller's disabled Excel event state.");
+      var disabledPlacementUndo = RunExcelSta(() => new ExcelImagePlacementService().DeletePlacedImage(
+        reopenedIdentity,
+        disabledPlacement.WorksheetName,
+        disabledPlacement.ShapeName));
+      Assert.IsTrue(disabledPlacementUndo.Succeeded, disabledPlacementUndo.Message);
 
       SetProperty(application, "EnableEvents", true);
       var enabledDiscovery = RunExcelSta(() => new ExcelSessionCatalog().Discover());

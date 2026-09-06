@@ -60,7 +60,7 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
       {
         if (!GetApplicationEventsEnabled(subscription.Value.Application))
         {
-          warnings.Add($"Excel events are disabled for process {subscription.Key}; enable events before operating on it.");
+          warnings.Add($"Excel events are disabled for process {subscription.Key}; close monitoring is paused and direct validation will be used.");
           failedProcessIds.Add(subscription.Key);
           Detach(subscription.Key, invalidateTokens: false);
         }
@@ -127,7 +127,7 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
 
           if (!GetApplicationEventsEnabled(application))
           {
-            warnings.Add($"Excel events are disabled for process {candidateProcessId}; enable events before operating on it.");
+            warnings.Add($"Excel events are disabled for process {candidateProcessId}; close monitoring is paused and direct validation will be used.");
             failedProcessIds.Add(candidateProcessId);
             WorkbookSessionTokenRegistry.MarkProcessUnmonitored(candidateProcessId);
             continue;

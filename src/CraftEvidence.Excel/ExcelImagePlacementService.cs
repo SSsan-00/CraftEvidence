@@ -282,11 +282,6 @@ public sealed class ExcelImagePlacementService
     }
 
     var eventsWereEnabled = Convert.ToBoolean(GetRequiredProperty(application, "EnableEvents"), CultureInfo.InvariantCulture);
-    if (!eventsWereEnabled)
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return ImageDeletionResult.Failed("Excel events are disabled; refresh before Undo.");
-    }
 
     object? worksheet = null;
     object? shapes = null;
@@ -449,11 +444,6 @@ public sealed class ExcelImagePlacementService
     var eventsWereEnabled = Convert.ToBoolean(
       GetRequiredProperty(application, "EnableEvents"),
       CultureInfo.InvariantCulture);
-    if (!eventsWereEnabled)
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return ImagePlacementResult.Failed("Excel events are disabled; refresh after enabling them before placing an image.");
-    }
 
     object? worksheet = null;
     object? activeCell = null;

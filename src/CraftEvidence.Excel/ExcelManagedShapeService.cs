@@ -204,11 +204,6 @@ public sealed class ExcelManagedShapeService
     }
 
     var eventsWereEnabled = ReadBoolean(application, "EnableEvents");
-    if (!eventsWereEnabled)
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return ManagedShapeMutationResult.Failed("Excelイベントが無効です。有効化して一覧を更新してください。");
-    }
 
     object? worksheet = null;
     object? shapes = null;
@@ -319,11 +314,6 @@ public sealed class ExcelManagedShapeService
     }
 
     var eventsWereEnabled = ReadBoolean(application, "EnableEvents");
-    if (!eventsWereEnabled)
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return ManagedShapeMutationResult.Failed("Excelイベントが無効です。有効化して一覧を更新してください。");
-    }
 
     object? worksheet = null;
     object? shapes = null;
@@ -463,11 +453,6 @@ public sealed class ExcelManagedShapeService
     }
 
     var eventsWereEnabled = ReadBoolean(application, "EnableEvents");
-    if (!eventsWereEnabled)
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return ManagedShapeMutationResult.Failed("Excelイベントが無効です。有効化して一覧を更新してください。");
-    }
     object? worksheet = null;
     object? shapes = null;
     object? shape = null;

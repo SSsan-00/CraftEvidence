@@ -1,4 +1,4 @@
-# 0.1.0-preview.16 実装・再レビュー状態
+# 0.1.0-preview.17 実装・再レビュー状態
 
 - 状態: 完成仕様レビュー候補
 - 検証日: 2026-09-06
@@ -38,10 +38,11 @@
 | 実EvidenceブックでSnapshotが遅い | ActiveCellが属する30行のCaseだけを占有・行高走査し、結合セルがないUsedRangeではセル単位の結合確認を省略 |
 | 実Evidenceブック構造の回帰不足 | 個別EvidenceのC:Q／R:AF、30行Case、書式末尾を含む422行UsedRangeと392行論理終端をFixture化 |
 | 選択できるブックで「Workbook close monitoring is unavailable」となり解析不能 | 終了イベント監視を補助機能とし、操作時のブック名・パス・Excel PID・HWND・ネイティブ接続トークン照合を必須の安全境界へ変更 |
+| `EnableEvents=false` 後に配置不能となり、続けて再オープン誤判定 | イベント無効を接続切断として扱う処理を削除。直接照合で操作し、元のイベント状態を復元する。無効状態でフォーカス・配置・Undoする実Excel回帰試験を追加 |
 
 ## 安全境界
 
-- Workbook identity、Excel PID、Window handle、Window token、ReadOnly、Sheet保護、EnableEventsを変更直前に再検証する。終了イベント監視の有無だけでは操作を拒否しない。
+- Workbook identity、Excel PID、Window handle、Window token、ReadOnly、Sheet保護を変更直前に再検証する。終了イベント監視やEnableEventsの状態だけでは操作を拒否せず、EnableEventsは操作前の値へ復元する。
 - Snapshot fingerprintが変化した場合は自動配置を中止する。
 - 複数ステップ配置は途中失敗時にShape→挿入行の逆順で補償する。
 - 削除対象行に値、数式、コメント、リンク、Shape、結合があれば削除しない。

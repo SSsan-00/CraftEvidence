@@ -215,11 +215,6 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
       var eventsWereEnabled = Convert.ToBoolean(
         GetRequiredProperty(application, "EnableEvents"),
         CultureInfo.InvariantCulture);
-      if (!eventsWereEnabled)
-      {
-        WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-        return new FocusResult(false, "Excel events are disabled; refresh after enabling them before focusing.");
-      }
 
       SetProperty(application, "EnableEvents", false);
       try

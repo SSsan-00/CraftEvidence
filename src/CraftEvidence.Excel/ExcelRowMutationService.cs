@@ -617,16 +617,6 @@ public sealed class ExcelRowMutationService
         "The selected Workbook was closed or reopened; refresh and select it again.");
     }
 
-    if (!Convert.ToBoolean(
-      GetRequiredProperty(application, "EnableEvents"),
-      CultureInfo.InvariantCulture))
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return RowSafetySnapshotResult.Failed(
-        worksheetName,
-        "Excel events are disabled; refresh after enabling them before inspecting rows.");
-    }
-
     object? worksheet = null;
     object? rows = null;
     try
@@ -900,14 +890,6 @@ public sealed class ExcelRowMutationService
     var eventsWereEnabled = Convert.ToBoolean(
       GetRequiredProperty(application, "EnableEvents"),
       CultureInfo.InvariantCulture);
-    if (!eventsWereEnabled)
-    {
-      WorkbookSessionTokenRegistry.UnregisterMonitoredProcess(identity.ProcessId);
-      return RowMutationResult.Failed(
-        plan.Operation,
-        worksheetName,
-        "Excel events are disabled; refresh after enabling them before changing rows.");
-    }
 
     object? worksheet = null;
     object? rows = null;
