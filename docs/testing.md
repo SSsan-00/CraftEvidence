@@ -1,11 +1,11 @@
-# CraftEvidence テスト方針
+# EvidenceCrafter テスト方針
 
 ## 通常テスト
 
-`CraftEvidence.Tests` はExcelなしで動くCoreテストを既定とする。
+`EvidenceCrafter.Tests` はExcelなしで動くCoreテストを既定とする。
 
 ```powershell
-dotnet test tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj --filter 'TestCategory!=ExcelIntegration'
+dotnet test tests\EvidenceCrafter.Tests\EvidenceCrafter.Tests.csproj --filter 'TestCategory!=ExcelIntegration'
 ```
 
 ## Excel結合テスト
@@ -17,7 +17,7 @@ Officeを起動するテストには `[TestCategory("ExcelIntegration")]` を付
 参照Workbookを使う場合は次を必須とする。
 
 1. SHA-256をベースラインと照合する。
-2. `%TEMP%\CraftEvidence.Tests\<GUID>` へコピーする。
+2. `%TEMP%\EvidenceCrafter.Tests\<GUID>` へコピーする。
 3. コピーだけをExcelで開く。
 4. Excelを閉じ、一時コピーを削除する。
 5. 参照元SHA-256を再確認する。

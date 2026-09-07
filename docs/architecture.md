@@ -1,20 +1,20 @@
-# CraftEvidence アーキテクチャ
+# EvidenceCrafter アーキテクチャ
 
 ## 依存方向
 
 ```text
-CraftEvidence.App  ───────> CraftEvidence.Core
+EvidenceCrafter.App  ───────> EvidenceCrafter.Core
         │
-        └───────────────> CraftEvidence.Excel ─────> CraftEvidence.Core
+        └───────────────> EvidenceCrafter.Excel ─────> EvidenceCrafter.Core
 
-CraftEvidence.Tests ─────> CraftEvidence.Core
+EvidenceCrafter.Tests ─────> EvidenceCrafter.Core
 ```
 
 `Core` はExcel COM、WinForms、Clipboardへ依存しない。Excelから読み取った情報はimmutableなsignal/DTOへ変換し、解析と配置計画をCoreで行う。
 
 ## Project責務
 
-### CraftEvidence.Core
+### EvidenceCrafter.Core
 
 - Case Anchorと最終Case境界の解析
 - New/Old領域の解析
@@ -22,7 +22,7 @@ CraftEvidence.Tests ─────> CraftEvidence.Core
 - 画像サイズ計算
 - 占有範囲と非画像帯を考慮した配置計画
 
-### CraftEvidence.Excel
+### EvidenceCrafter.Excel
 
 - Running Object Tableから起動中Excelを読み取り専用で探索
 - COMオブジェクトをCore DTOへ変換
@@ -37,7 +37,7 @@ COMオブジェクトはadapter外へ公開しない。通常の列挙・フォ�
 
 Workbook終了イベントの購読だけは明示的な例外である。`ExcelApplicationSessionMonitorHost` がメッセージループ付きの専用background STAを所有し、そのSTA内のMonitorだけがExcel `Application` と `IConnectionPoint` を購読期間中保持する。Refresh、callback、Unadvise、RCW解放は同じSTAで行う。UIは15秒を上限に結果を待ち、timeout時はPID配下の接続トークンを直ちに無効化して操作を継続する。終了時は有効tokenとPID固有のWorkbook Window propertyを同期的に除去してから、同STAへ購読解除を非同期通知し、応答しないExcelがUI終了を妨げないようにする。Process終了時にも同じnative property cleanupを再実行する。
 
-### CraftEvidence.App
+### EvidenceCrafter.App
 
 - Workbook選択
 - New/Oldの明示選択

@@ -43,5 +43,5 @@
 
 - 参照元を直接Excelで更新しない。
 - 書き込み試験は一時ディレクトリへ複製してから実施する。
-- fixtureは業務値を含まない匿名JSONをCraftEvidence側に置く。
+- fixtureは業務値を含まない匿名JSONをEvidenceCrafter側に置く。
 - テスト前後で上記ハッシュを比較する。

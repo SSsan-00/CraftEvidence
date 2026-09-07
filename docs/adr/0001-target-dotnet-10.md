@@ -5,7 +5,7 @@
 
 ## Decision
 
-CraftEvidenceのtarget frameworkを `net10.0-windows` とする。
+EvidenceCrafterのtarget frameworkを `net10.0-windows` とする。
 
 ## Context
 

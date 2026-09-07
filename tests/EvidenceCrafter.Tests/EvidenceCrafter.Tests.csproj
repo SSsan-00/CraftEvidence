@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>EvidenceCrafter.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+    <ProjectReference Include="..\..\src\EvidenceCrafter.App\EvidenceCrafter.App.csproj" />
+    <ProjectReference Include="..\..\src\EvidenceCrafter.Core\EvidenceCrafter.Core.csproj" />
+    <ProjectReference Include="..\..\src\EvidenceCrafter.Excel\EvidenceCrafter.Excel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures\*.json" />
+  </ItemGroup>
+</Project>

@@ -1,4 +1,4 @@
-# CraftEvidence
+# EvidenceCrafter
 
 Case&Evidence形式のExcelブックへスクリーンショットを安全に配置するWindowsデスクトップツールです。`0.1.0-preview.18` は完成仕様レビュー候補です。
 
@@ -17,7 +17,7 @@ Case&Evidence形式のExcelブックへスクリーンショットを安全に�
 
 ```powershell
 .\bootstrap.ps1
-dotnet test .\tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj -c Release --no-build --filter "TestCategory=ExcelIntegration"
+dotnet test .\tests\EvidenceCrafter.Tests\EvidenceCrafter.Tests.csproj -c Release --no-build --filter "TestCategory=ExcelIntegration"
 ```
 
 ## 発行
@@ -26,12 +26,12 @@ dotnet test .\tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj -c Release --
 .\bootstrap.ps1 -Publish -Runtime win-x64
 ```
 
-成果物は `artifacts/publish/win-x64/CraftEvidence.exe` です。SHA-256 sidecarも同じフォルダに生成されます。
+成果物は `artifacts/publish/win-x64/EvidenceCrafter.exe` です。SHA-256 sidecarも同じフォルダに生成されます。
 
 ## 使い方
 
 1. Excelで対象ブックとシートを開き、書き込み先Case内のセルを選択します。
-2. CraftEvidenceでWorkbookを選ぶと、実際のSheet名とCase番号が表示されます。必要な場合はSheet名またはCase番号を編集し、New/Oldを選びます。
+2. EvidenceCrafterでWorkbookを選ぶと、実際のSheet名とCase番号が表示されます。必要な場合はSheet名またはCase番号を編集し、New/Oldを選びます。
 3. `Ctrl + Shift + E`または「画面をキャプチャ」で範囲を選び、表示された配置予定（Sheet、Case、Side、開始セル、追加行数、画像幅）を確認して、編集の有無だけを選びます。配置先は自動判定されます。従来の`Win + Shift + S`も利用できます。
 4. 管理画像をExcelで1つ選択すると差し替え・削除できます。`Ctrl+Z` / `Ctrl+Y` または画面ボタンで履歴を操作します。
 5. 内容を確認後、保存はExcel側で明示的に行います。

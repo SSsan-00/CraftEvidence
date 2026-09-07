@@ -1,14 +1,14 @@
-# CraftEvidence 実装計画
+# EvidenceCrafter 実装計画
 
 - 文書版: 0.1
 - 作成日: 2026-08-31
-- 実装先: `C:\work\CraftEvidence`
+- 実装先: `C:\work\EvidenceCrafter`
 - 参照専用: `C:\work\Macro\Case&Evidence`
 - 状態: 完成仕様を実装済み。自動・一括配置、管理画像操作、行調整、前後Case移動、操作単位の補償付きUndo/Redoをレビュー候補として検証中
 
 ## 1. 結論
 
-CraftEvidence は、既存の Case&Evidence が生成した Excel エビデンスシートを毎操作時に読み直し、スクリーンショットの取得、編集、配置、差し替え、削除、行調整を支援する Windows 専用 WinForms アプリとして新規開発する。
+EvidenceCrafter は、既存の Case&Evidence が生成した Excel エビデンスシートを毎操作時に読み直し、スクリーンショットの取得、編集、配置、差し替え、削除、行調整を支援する Windows 専用 WinForms アプリとして新規開発する。
 
 実装は次の順序で進める。
 
@@ -52,7 +52,7 @@ CraftEvidence は、既存の Case&Evidence が生成した Excel エビデン�
 - `C:\work\Macro\Case&Evidence` 内では作成、更新、削除、整形、テスト出力を行わない。
 - 結合テストで参照サンプルを使う場合は、一時フォルダへコピーした複製だけを開く。
 - テスト終了時に参照元の SHA-256 が変わっていないことを検証できるスクリプトを用意する。
-- CraftEvidence へ移すのは外部仕様と匿名化した fixture であり、VBA 実装そのものは複製しない。
+- EvidenceCrafter へ移すのは外部仕様と匿名化した fixture であり、VBA 実装そのものは複製しない。
 
 調査時点の基準ハッシュは次のとおり。
 
@@ -96,7 +96,7 @@ CraftEvidence は、既存の Case&Evidence が生成した Excel エビデン�
 - アプリから最後に追加した画像を取り消せる。
 - Workbook を自動保存しない。
 - ローカル設定と、画像本体を含まない診断ログを保存する。
-- Primary RID は `win-x64` とし、self-contained の単一 `CraftEvidence.exe` を生成する。ただし Phase 2 で Office x86 との接続互換性を必ず検証する。
+- Primary RID は `win-x64` とし、self-contained の単一 `EvidenceCrafter.exe` を生成する。ただし Phase 2 で Office x86 との接続互換性を必ず検証する。
 
 ### 3.2 初版対象外
 
@@ -118,8 +118,8 @@ CraftEvidence は、既存の Case&Evidence が生成した Excel エビデン�
 | テスト | MSTest | 共有会話の確定事項。Core 単体テストと Office 必須の結合テストを分離する。 |
 | 画像 | WinForms/System.Drawing 系、メモリ内処理 | 初版の編集要件を満たし、画像をディスクへ恒久保存しない。 |
 | 配布 | Primary `win-x64`、self-contained、single-file、trim 無効 | 利用者の .NET 導入を不要にする。WinForms/COM/Interop の互換性リスクを避けるため trimming は使わない。Office x86 互換性は早期検証する。 |
-| 設定 | `%LocalAppData%\CraftEvidence\settings.json` | ユーザー単位で持ち運び不要な設定を保存する。Side は起動時 New に戻す。 |
-| ログ | `%LocalAppData%\CraftEvidence\logs` | Excel 接続、解析結果、変更計画、結果、例外を記録する。画像やセル本文は既定で記録しない。 |
+| 設定 | `%LocalAppData%\EvidenceCrafter\settings.json` | ユーザー単位で持ち運び不要な設定を保存する。Side は起動時 New に戻す。 |
+| ログ | `%LocalAppData%\EvidenceCrafter\logs` | Excel 接続、解析結果、変更計画、結果、例外を記録する。画像やセル本文は既定で記録しない。 |
 | 管理 Shape | `EST_IMG_<GUID>` と `AlternativeText` のバージョン付きメタデータ | 管理画像だけを安全に差し替え・削除し、再起動後も識別する。 |
 
 `PublishSingleFile=true`、`SelfContained=true`、`RuntimeIdentifier=win-x64`、`IncludeNativeLibrariesForSelfExtract=true` を primary publish profile に持たせる。単一 EXE であっても Microsoft Excel のインストールは必要であり、Office を同梱するものではない。
@@ -130,12 +130,12 @@ CraftEvidence は、既存の Case&Evidence が生成した Excel エビデン�
 - `win-x86` アプリから Office x86 を扱う。
 - Office x64 の検証環境が用意できる場合は `win-x64` でも同じ結合テストを行う。
 
-`win-x64` と Office x86 の全機能が安定する場合は primary EXE 1 本を維持する。互換性に問題がある場合は、primary RID を実利用 Office に合わせるか、`CraftEvidence-win-x86.exe` と `CraftEvidence-win-x64.exe` の各単一ファイルを配布する。この判断は Phase 2 の実測をリリースゲートとする。
+`win-x64` と Office x86 の全機能が安定する場合は primary EXE 1 本を維持する。互換性に問題がある場合は、primary RID を実利用 Office に合わせるか、`EvidenceCrafter-win-x86.exe` と `EvidenceCrafter-win-x64.exe` の各単一ファイルを配布する。この判断は Phase 2 の実測をリリースゲートとする。
 
 ## 5. リポジトリ構成
 
 ```text
-CraftEvidence/
+EvidenceCrafter/
 ├─ .github/
 │  └─ workflows/
 │     ├─ ci.yml
@@ -147,15 +147,15 @@ CraftEvidence/
 │  ├─ reference-baseline.md
 │  └─ testing.md
 ├─ src/
-│  ├─ CraftEvidence.App/
-│  ├─ CraftEvidence.Core/
-│  └─ CraftEvidence.Excel/
+│  ├─ EvidenceCrafter.App/
+│  ├─ EvidenceCrafter.Core/
+│  └─ EvidenceCrafter.Excel/
 ├─ tests/
-│  └─ CraftEvidence.Tests/
+│  └─ EvidenceCrafter.Tests/
 │     └─ Fixtures/
 ├─ artifacts/                 # Git 管理外
 ├─ bootstrap.ps1
-├─ CraftEvidence.sln
+├─ EvidenceCrafter.sln
 ├─ Directory.Build.props
 ├─ Directory.Packages.props
 ├─ global.json
@@ -168,10 +168,10 @@ CraftEvidence/
 
 | Project | 責務 | 依存先 |
 |---|---|---|
-| `CraftEvidence.Core` | Case/Layout 解析、占有範囲、画像サイズ、配置、行変更計画、検証 | BCL のみ。WinForms、COM、Excel 型へ依存しない。 |
-| `CraftEvidence.Excel` | ROT、Workbook 接続、Worksheet の snapshot 化、計画の適用、COM 解放 | Core の DTO/契約 |
-| `CraftEvidence.App` | WinForms、Clipboard、プレビュー、画像編集、設定、ログ、操作調停 | Core、Excel |
-| `CraftEvidence.Tests` | Core 単体、fixture 回帰、Excel 結合 | 対象 Project |
+| `EvidenceCrafter.Core` | Case/Layout 解析、占有範囲、画像サイズ、配置、行変更計画、検証 | BCL のみ。WinForms、COM、Excel 型へ依存しない。 |
+| `EvidenceCrafter.Excel` | ROT、Workbook 接続、Worksheet の snapshot 化、計画の適用、COM 解放 | Core の DTO/契約 |
+| `EvidenceCrafter.App` | WinForms、Clipboard、プレビュー、画像編集、設定、ログ、操作調停 | Core、Excel |
+| `EvidenceCrafter.Tests` | Core 単体、fixture 回帰、Excel 結合 | 対象 Project |
 
 COM オブジェクトを Core やバックグラウンドスレッドへ渡さない。Excel から必要情報を一括取得して `SheetSnapshot` へ変換し、それ以降の解析と計画作成は純粋な C# ロジックで行う。
 
@@ -484,7 +484,7 @@ preview.12では上記に加え、Case自動解析を画像配置へ接続し、
 
 成果物:
 
-- `artifacts/publish/CraftEvidence.exe`
+- `artifacts/publish/EvidenceCrafter.exe`
 - publish profile
 - CI workflow
 - tag 用 Release workflow
@@ -599,7 +599,7 @@ preview.12では上記に加え、Case自動解析を画像配置へ接続し、
 - 判定不能・保護・ReadOnly・切断・結合影響時に安全停止する。
 - Workbook を自動保存せず、参照フォルダを一切変更しない。
 - Core unit test、Excel integration test、手動 E2E の品質ゲートを通る。
-- Primary RID では `artifacts/publish/CraftEvidence.exe` 1 ファイルを配布できる。複数 RID が必要と判定された場合も、各 RID の配布単位は単一 EXE とする。
+- Primary RID では `artifacts/publish/EvidenceCrafter.exe` 1 ファイルを配布できる。複数 RID が必要と判定された場合も、各 RID の配布単位は単一 EXE とする。
 - 新しい開発 PC で `bootstrap.ps1` により build/test/publish を再現できる。
 
 ## 15. 参照 URL

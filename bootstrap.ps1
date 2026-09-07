@@ -7,16 +7,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$solutionPath = Join-Path $projectRoot 'CraftEvidence.sln'
-$testProject = Join-Path $projectRoot 'tests\CraftEvidence.Tests\CraftEvidence.Tests.csproj'
-$appProject = Join-Path $projectRoot 'src\CraftEvidence.App\CraftEvidence.App.csproj'
+$solutionPath = Join-Path $projectRoot 'EvidenceCrafter.sln'
+$testProject = Join-Path $projectRoot 'tests\EvidenceCrafter.Tests\EvidenceCrafter.Tests.csproj'
+$appProject = Join-Path $projectRoot 'src\EvidenceCrafter.App\EvidenceCrafter.App.csproj'
 $publishPath = Join-Path $projectRoot "artifacts\publish\$Runtime"
 
 Push-Location $projectRoot
 try {
     $sdkVersion = (& dotnet --version).Trim()
     if (-not $sdkVersion.StartsWith('10.')) {
-        throw "CraftEvidence requires .NET 10 SDK. Detected: $sdkVersion"
+        throw "EvidenceCrafter requires .NET 10 SDK. Detected: $sdkVersion"
     }
 
     dotnet restore $solutionPath
@@ -50,18 +50,18 @@ try {
             -p:PublishTrimmed=false
         if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 
-        $exePath = Join-Path $resolvedPublishPath 'CraftEvidence.exe'
+        $exePath = Join-Path $resolvedPublishPath 'EvidenceCrafter.exe'
         if (-not (Test-Path -LiteralPath $exePath)) {
             throw "Publish completed without the expected executable: $exePath"
         }
 
         Get-FileHash -Algorithm SHA256 -LiteralPath $exePath |
             ForEach-Object { "{0}  {1}" -f $_.Hash, (Split-Path -Leaf $_.Path) } |
-            Set-Content -Encoding ascii -LiteralPath (Join-Path $resolvedPublishPath 'CraftEvidence.exe.sha256')
+            Set-Content -Encoding ascii -LiteralPath (Join-Path $resolvedPublishPath 'EvidenceCrafter.exe.sha256')
 
         $allowedPublishFiles = @(
             [System.IO.Path]::GetFullPath($exePath),
-            [System.IO.Path]::GetFullPath((Join-Path $resolvedPublishPath 'CraftEvidence.exe.sha256'))
+            [System.IO.Path]::GetFullPath((Join-Path $resolvedPublishPath 'EvidenceCrafter.exe.sha256'))
         )
         $unexpectedFiles = Get-ChildItem -LiteralPath $resolvedPublishPath -File -Recurse |
             Where-Object { [System.IO.Path]::GetFullPath($_.FullName) -notin $allowedPublishFiles }
