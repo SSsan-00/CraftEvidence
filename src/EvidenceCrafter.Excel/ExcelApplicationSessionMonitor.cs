@@ -146,7 +146,7 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
 
           var sink = new AppEventsSink(
             (object workbook, ref bool cancel) => OnWorkbookBeforeClose(candidateProcessId, workbook),
-            (_, _) => SelectionChanged?.Invoke(this, new ExcelSelectionChangedEventArgs(candidateProcessId)));
+            (sheet, target) => OnSheetSelectionChange(candidateProcessId, sheet, target));
           connectionPoint.Advise(sink, out var cookie);
           subscriptions[candidateProcessId] = new Subscription(application, connectionPoint, cookie, sink);
           WorkbookSessionTokenRegistry.RegisterMonitoredProcess(candidateProcessId);
@@ -510,6 +510,29 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
     public void WorkbookBeforeClose(object workbook, ref bool cancel) => workbookBeforeClose(workbook, ref cancel);
   }
 
+  private void OnSheetSelectionChange(uint processId, object sheet, object target)
+  {
+    object? workbook = null;
+    try
+    {
+      workbook = GetRequiredProperty(sheet, "Parent");
+      SelectionChanged?.Invoke(this, new ExcelSelectionChangedEventArgs(
+        processId,
+        Convert.ToString(GetRequiredProperty(workbook, "FullName"), CultureInfo.CurrentCulture) ?? string.Empty,
+        Convert.ToString(GetRequiredProperty(sheet, "Name"), CultureInfo.CurrentCulture) ?? string.Empty,
+        Convert.ToInt32(GetRequiredProperty(target, "Row"), CultureInfo.InvariantCulture),
+        Convert.ToInt32(GetRequiredProperty(target, "Column"), CultureInfo.InvariantCulture)));
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      // A selection event can race with Workbook close. The next refresh will reconcile state.
+    }
+    finally
+    {
+      ComRelease.Release(workbook);
+    }
+  }
+
   private sealed record WorkbookWindowSession(nint DocumentWindowHandle, nint Token);
 
   private sealed record PendingWorkbookClose(
@@ -548,7 +571,16 @@ public sealed class ExcelApplicationSessionMonitor : IDisposable
   }
 }
 
-public sealed class ExcelSelectionChangedEventArgs(uint processId) : EventArgs
+public sealed class ExcelSelectionChangedEventArgs(
+  uint processId,
+  string workbookFullPath = "",
+  string worksheetName = "",
+  int row = 0,
+  int column = 0) : EventArgs
 {
   public uint ProcessId { get; } = processId;
+  public string WorkbookFullPath { get; } = workbookFullPath;
+  public string WorksheetName { get; } = worksheetName;
+  public int Row { get; } = row;
+  public int Column { get; } = column;
 }

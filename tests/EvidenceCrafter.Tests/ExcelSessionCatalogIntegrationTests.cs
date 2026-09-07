@@ -165,7 +165,8 @@ public sealed class ExcelSessionCatalogIntegrationTests
         "Each Workbook must retain its own top-level Excel window handle.");
       Assert.IsTrue(Environment.Is64BitProcess, "The win-x64 compatibility test must use a 64-bit test host.");
       sessionMonitor = new ExcelApplicationSessionMonitor();
-      var monitorWarnings = sessionMonitor.Refresh(discovery.Workbooks);
+      var monitorWarnings = sessionMonitor.Refresh(
+        discovery.Workbooks.Where(item => item.ProcessId == identity.ProcessId).ToArray());
       Assert.HasCount(0, monitorWarnings, string.Join(" | ", monitorWarnings));
 
       otherAnchorCell = GetRequiredProperty(otherWorksheet, "Cells", 1, 1);
@@ -656,7 +657,8 @@ public sealed class ExcelSessionCatalogIntegrationTests
 
       var cancelledSessionToken = identity.WindowSessionToken;
       SetProperty(application, "EnableEvents", false);
-      var cancelledCloseDisabledWarnings = sessionMonitor.Refresh(discovery.Workbooks);
+      var cancelledCloseDisabledWarnings = sessionMonitor.Refresh(
+        discovery.Workbooks.Where(item => item.ProcessId == identity.ProcessId).ToArray());
       Assert.IsTrue(
         cancelledCloseDisabledWarnings.Any(warning =>
           warning.Contains("events are disabled", StringComparison.OrdinalIgnoreCase)),
@@ -673,7 +675,10 @@ public sealed class ExcelSessionCatalogIntegrationTests
         cancelledSessionToken,
         recoveredAfterCancelIdentity.WindowSessionToken,
         "Rediscovery must preserve the open Workbook window token when only monitoring failed.");
-      var recoveredAfterCancelWarnings = sessionMonitor.Refresh(recoveredAfterCancelDiscovery.Workbooks);
+      var recoveredAfterCancelWarnings = sessionMonitor.Refresh(
+        recoveredAfterCancelDiscovery.Workbooks
+          .Where(item => item.ProcessId == recoveredAfterCancelIdentity.ProcessId)
+          .ToArray());
       Assert.HasCount(0, recoveredAfterCancelWarnings, string.Join(" | ", recoveredAfterCancelWarnings));
       Thread.Sleep(750);
       Assert.IsTrue(
@@ -740,7 +745,8 @@ public sealed class ExcelSessionCatalogIntegrationTests
       Assert.IsTrue(reopenedFocus.Succeeded, reopenedFocus.Message);
 
       SetProperty(application, "EnableEvents", false);
-      var disabledWarnings = sessionMonitor.Refresh(rediscovery.Workbooks);
+      var disabledWarnings = sessionMonitor.Refresh(
+        rediscovery.Workbooks.Where(item => item.ProcessId == reopenedIdentity.ProcessId).ToArray());
       Assert.IsTrue(
         disabledWarnings.Any(warning => warning.Contains("events are disabled", StringComparison.OrdinalIgnoreCase)),
         string.Join(" | ", disabledWarnings));
@@ -777,7 +783,8 @@ public sealed class ExcelSessionCatalogIntegrationTests
       var enabledDiscovery = RunExcelSta(() => new ExcelSessionCatalog().Discover());
       var enabledIdentity = enabledDiscovery.Workbooks.Single(item =>
         string.Equals(item.FullPath, workbookPath, StringComparison.OrdinalIgnoreCase));
-      var enabledWarnings = sessionMonitor.Refresh(enabledDiscovery.Workbooks);
+      var enabledWarnings = sessionMonitor.Refresh(
+        enabledDiscovery.Workbooks.Where(item => item.ProcessId == enabledIdentity.ProcessId).ToArray());
       Assert.HasCount(0, enabledWarnings, string.Join(" | ", enabledWarnings));
       var enabledFocus = RunExcelSta(() => new ExcelPlacementFocusService().FocusPlacedImage(
         enabledIdentity,

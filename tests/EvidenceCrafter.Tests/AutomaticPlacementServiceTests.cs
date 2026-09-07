@@ -23,6 +23,15 @@ public sealed class AutomaticPlacementServiceTests
 
     Assert.IsTrue(result.Succeeded, result.Message);
     Assert.AreEqual("1-1", result.CaseLabel);
+    Assert.AreEqual(snapshot.LayoutSignals, result.LayoutSignals);
+  }
+
+  [TestMethod]
+  public void FormatCaseLabel_CombinesBothCaseColumns()
+  {
+    var anchor = new CaseAnchorSignal(3, true, true, false, "1", "2");
+
+    Assert.AreEqual("1-2", ExcelAutomaticPlacementService.FormatCaseLabel(anchor));
   }
 
   [TestMethod]

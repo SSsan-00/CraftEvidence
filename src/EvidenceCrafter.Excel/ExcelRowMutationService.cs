@@ -663,6 +663,7 @@ public sealed class ExcelRowMutationService
     var commentRows = ReadRowsWithComments(worksheet, firstRow, lastRow);
     var hyperlinkRows = ReadRowsWithHyperlinks(worksheet, firstRow, lastRow);
     var shapeRows = ReadRowsWithShapes(worksheet, firstRow, lastRow);
+    var rangeHasNoMerges = RangeHasNoMerges(worksheet, firstRow, lastRow);
     object? rows = null;
     try
     {
@@ -682,7 +683,7 @@ public sealed class ExcelRowMutationService
             commentRows.Contains(row),
             hyperlinkRows.Contains(row),
             shapeRows.Contains(row),
-            HasMergeOrUnknown(rowRange));
+            !rangeHasNoMerges && HasMergeOrUnknown(rowRange));
           states.Add(state);
           if (!state.CanDelete)
           {
@@ -1214,6 +1215,27 @@ public sealed class ExcelRowMutationService
     finally
     {
       ComRelease.Release(worksheets);
+    }
+  }
+
+  private static bool RangeHasNoMerges(object worksheet, int firstRow, int lastRow)
+  {
+    object? range = null;
+    try
+    {
+      range = InvokeProperty(worksheet, "Range", $"{firstRow}:{lastRow}");
+      return range is not null &&
+        TryGetProperty(range, "MergeCells", out var value) &&
+        value is not null && value is not DBNull &&
+        !Convert.ToBoolean(value, CultureInfo.InvariantCulture);
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      return false;
+    }
+    finally
+    {
+      ComRelease.Release(range);
     }
   }
 

@@ -175,7 +175,10 @@ public sealed class ExcelAutomaticPlacementService
         ResolveCaseLabel(snapshot, analyzed.Layout!.StartRow),
         snapshot.ActiveCell.Row,
         side,
-        $"{snapshot.WorksheetName} の{side}側へ{plans.Count}件を配置する計画を作成しました。");
+        $"{snapshot.WorksheetName} の{side}側へ{plans.Count}件を配置する計画を作成しました。")
+      {
+        LayoutSignals = snapshot.LayoutSignals,
+      };
     }
     catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or OverflowException)
     {
@@ -310,7 +313,7 @@ public sealed class ExcelAutomaticPlacementService
   private static string ResolveCaseLabel(SheetSnapshot snapshot, int startRow)
   {
     var anchor = snapshot.LayoutSignals.Anchors.Last(anchor => anchor.Row <= startRow);
-    return CaseLabel(anchor);
+    return FormatCaseLabel(anchor);
   }
 
   private static RequestedCaseResolution ResolveRequestedCase(
@@ -323,7 +326,7 @@ public sealed class ExcelAutomaticPlacementService
     }
 
     var matches = snapshot.LayoutSignals.Anchors
-      .Where(anchor => string.Equals(CaseLabel(anchor), requestedCaseLabel.Trim(), StringComparison.CurrentCultureIgnoreCase))
+      .Where(anchor => string.Equals(FormatCaseLabel(anchor), requestedCaseLabel.Trim(), StringComparison.CurrentCultureIgnoreCase))
       .ToArray();
     return matches.Length switch
     {
@@ -333,7 +336,7 @@ public sealed class ExcelAutomaticPlacementService
     };
   }
 
-  private static string CaseLabel(CaseAnchorSignal anchor)
+  public static string FormatCaseLabel(CaseAnchorSignal anchor)
   {
     var values = new[] { anchor.ColumnAValue, anchor.ColumnBValue }
       .Where(value => !string.IsNullOrWhiteSpace(value));
@@ -584,6 +587,8 @@ public sealed record AutomaticPlacementAnalysisResult(
   EvidenceSide ResolvedSide,
   string Message)
 {
+  public SheetLayoutSignals? LayoutSignals { get; init; }
+
   public static AutomaticPlacementAnalysisResult Failed(string message) =>
     new(false, string.Empty, null, [], string.Empty, string.Empty, 0, EvidenceSide.New, message);
 }

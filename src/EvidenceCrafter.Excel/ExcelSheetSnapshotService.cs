@@ -249,7 +249,14 @@ public sealed class ExcelSheetSnapshotService
       var formulas = InvokeProperty(usedRange, "Formula");
       var usedRangeHasNoMerges = TryGetProperty(usedRange, "MergeCells", out var mergeCells) &&
         mergeCells is not null &&
+        mergeCells is not DBNull &&
         !Convert.ToBoolean(mergeCells, CultureInfo.InvariantCulture);
+      if (!usedRangeHasNoMerges)
+      {
+        return SheetSnapshotResult.Failed(
+          resolvedName,
+          $"シート {resolvedName} に結合セルがあるか、結合状態を確認できません。Evidenceシートでは結合セルを使用できません。");
+      }
       var comments = ReadLinkedCells(worksheet, "Comments");
       comments.UnionWith(ReadLinkedCells(worksheet, "CommentsThreaded", optional: true));
       var hyperlinks = ReadLinkedCells(worksheet, "Hyperlinks");
@@ -302,7 +309,6 @@ public sealed class ExcelSheetSnapshotService
       var currentCaseLastRow = Math.Min(nextAnchor?.Row - 1 ?? logicalLastRow, logicalLastRow);
 
       var cells = ReadOccupiedCells(
-        worksheet,
         values,
         formulas,
         comments,
@@ -313,8 +319,7 @@ public sealed class ExcelSheetSnapshotService
         columnCount,
         currentCaseFirstRow,
         currentCaseLastRow,
-        observedLastColumn,
-        usedRangeHasNoMerges);
+        observedLastColumn);
       var shapes = ReadShapes(worksheet);
       captureStage = "reading row heights and column widths";
       var rowHeights = ReadRowHeights(worksheet, currentCaseFirstRow, currentCaseLastRow);
@@ -499,7 +504,6 @@ public sealed class ExcelSheetSnapshotService
   }
 
   private static IReadOnlyList<SnapshotCell> ReadOccupiedCells(
-    object worksheet,
     object? values,
     object? formulas,
     HashSet<(int Row, int Column)> comments,
@@ -510,8 +514,7 @@ public sealed class ExcelSheetSnapshotService
     int columnCount,
     int caseFirstRow,
     int caseLastRow,
-    int evidenceLastColumn,
-    bool usedRangeHasNoMerges)
+    int evidenceLastColumn)
   {
     var result = new List<SnapshotCell>();
     var startRow = Math.Max(firstRow, caseFirstRow);
@@ -527,10 +530,9 @@ public sealed class ExcelSheetSnapshotService
           IsNonEmpty(MatrixValue(formulas, row, column, firstRow, firstColumn, rowCount, columnCount));
         var hasComment = comments.Contains((row, column));
         var hasHyperlink = hyperlinks.Contains((row, column));
-        var isMerged = !usedRangeHasNoMerges && IsMergedCell(worksheet, row, column);
-        if (hasContent || hasComment || hasHyperlink || isMerged)
+        if (hasContent || hasComment || hasHyperlink)
         {
-          result.Add(new SnapshotCell(row, column, hasContent, hasComment, hasHyperlink, isMerged));
+          result.Add(new SnapshotCell(row, column, hasContent, hasComment, hasHyperlink, false));
         }
       }
     }
@@ -597,6 +599,39 @@ public sealed class ExcelSheetSnapshotService
     int lastRow)
   {
     var result = new Dictionary<int, double>();
+    object? firstCell = null;
+    object? lastCell = null;
+    object? range = null;
+    try
+    {
+      firstCell = GetRequiredProperty(worksheet, "Cells", firstRow, 1);
+      lastCell = GetRequiredProperty(worksheet, "Cells", lastRow, 1);
+      range = GetRequiredProperty(worksheet, "Range", firstCell, lastCell);
+      if (TryGetProperty(range, "RowHeight", out var uniformValue) &&
+        uniformValue is not null && uniformValue is not DBNull)
+      {
+        var uniformHeight = Convert.ToDouble(uniformValue, CultureInfo.InvariantCulture);
+        if (double.IsFinite(uniformHeight) && uniformHeight > 0)
+        {
+          for (var row = firstRow; row <= lastRow; row++)
+          {
+            result[row] = uniformHeight;
+          }
+          return result;
+        }
+      }
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      // Mixed row heights and transient bulk-property failures use the proven per-row path below.
+    }
+    finally
+    {
+      ComRelease.Release(range);
+      ComRelease.Release(lastCell);
+      ComRelease.Release(firstCell);
+    }
+
     for (var row = firstRow; row <= lastRow; row++)
     {
       object? cell = null;
@@ -688,21 +723,6 @@ public sealed class ExcelSheetSnapshotService
     finally
     {
       ComRelease.Release(collection);
-    }
-  }
-
-  private static bool IsMergedCell(object worksheet, int row, int column)
-  {
-    object? cell = null;
-    try
-    {
-      cell = GetRequiredProperty(worksheet, "Cells", row, column);
-      var value = GetRequiredProperty(cell, "MergeCells");
-      return value is not null && Convert.ToBoolean(value, CultureInfo.InvariantCulture);
-    }
-    finally
-    {
-      ComRelease.Release(cell);
     }
   }
 

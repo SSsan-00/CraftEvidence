@@ -18,6 +18,7 @@ public sealed class MainForm : Form
   private readonly ExcelAutomaticPlacementService automaticPlacementService = new();
   private readonly ExcelManagedShapeService managedShapeService = new();
   private readonly ExcelCaseNavigationService caseNavigationService = new();
+  private readonly CaseLayoutAnalyzer placementContextLayoutAnalyzer = new();
   private readonly ExcelCaseMaintenanceService caseMaintenanceService;
   private readonly ExcelManagedReplacementLayoutService replacementLayoutService;
   private readonly AppSettingsStore settingsStore = new();
@@ -70,6 +71,7 @@ public sealed class MainForm : Form
   private bool placementContextRefreshInProgress;
   private bool placementContextRefreshPending;
   private bool placementContextRefreshPendingForce;
+  private AutomaticPlacementAnalysisResult? cachedPlacementContext;
 
   private bool CanUpdateUi =>
     IsHandleCreated &&
@@ -382,15 +384,25 @@ public sealed class MainForm : Form
 
   private void SetPlacementContext(AutomaticPlacementAnalysisResult analysis)
   {
+    cachedPlacementContext = analysis;
+    SetPlacementContext(analysis.WorksheetName, analysis.CaseLabel, analysis.ResolvedSide, overridden: false);
+  }
+
+  private void SetPlacementContext(
+    string worksheetName,
+    string caseLabel,
+    EvidenceSide side,
+    bool overridden)
+  {
     updatingPlacementContext = true;
     try
     {
-      worksheetNameBox.Text = analysis.WorksheetName;
-      caseLabelBox.Text = analysis.CaseLabel;
-      oldSideButton.Checked = analysis.ResolvedSide is EvidenceSide.Old;
-      newSideButton.Checked = analysis.ResolvedSide is EvidenceSide.New;
-      caseLabelOverridden = false;
-      placementTargetOverridden = false;
+      worksheetNameBox.Text = worksheetName;
+      caseLabelBox.Text = caseLabel;
+      oldSideButton.Checked = side is EvidenceSide.Old;
+      newSideButton.Checked = side is EvidenceSide.New;
+      caseLabelOverridden = overridden;
+      placementTargetOverridden = overridden;
     }
     finally
     {
@@ -417,7 +429,14 @@ public sealed class MainForm : Form
     {
       if (!settings.FollowExcelSelection || placementTargetOverridden ||
         workbookSelector.SelectedItem is not WorkbookIdentity workbook ||
-        workbook.ProcessId != eventArgs.ProcessId || Volatile.Read(ref mutationInProgress) != 0)
+        workbook.ProcessId != eventArgs.ProcessId ||
+        !WorkbookPathMatches(workbook, eventArgs.WorkbookFullPath) ||
+        Volatile.Read(ref mutationInProgress) != 0)
+      {
+        return;
+      }
+
+      if (TryApplyCachedSelection(eventArgs))
       {
         return;
       }
@@ -426,6 +445,47 @@ public sealed class MainForm : Form
       selectionChangeTimer.Start();
     });
   }
+
+  private bool TryApplyCachedSelection(ExcelSelectionChangedEventArgs selection)
+  {
+    var signals = cachedPlacementContext?.LayoutSignals;
+    if (signals is null || selection.Row < 1 || selection.Column < 1 ||
+      !string.Equals(cachedPlacementContext!.WorksheetName, selection.WorksheetName, StringComparison.Ordinal))
+    {
+      return false;
+    }
+
+    var analyzed = placementContextLayoutAnalyzer.Analyze(signals with { ActiveRow = selection.Row });
+    if (!analyzed.IsSafe || analyzed.Layout is null)
+    {
+      return false;
+    }
+
+    var anchor = signals.Anchors
+      .Where(candidate => candidate.HasCaseValue && candidate.Row <= selection.Row)
+      .OrderBy(candidate => candidate.Row)
+      .LastOrDefault();
+    if (anchor is null)
+    {
+      return false;
+    }
+
+    var side = selection.Column >= analyzed.Layout.OldRegion.FirstColumn &&
+      selection.Column <= analyzed.Layout.OldRegion.LastColumn
+        ? EvidenceSide.Old
+        : selection.Column >= analyzed.Layout.NewRegion.FirstColumn &&
+          selection.Column <= analyzed.Layout.NewRegion.LastColumn
+            ? EvidenceSide.New
+            : SelectedSide;
+    var label = ExcelAutomaticPlacementService.FormatCaseLabel(anchor);
+    SetPlacementContext(selection.WorksheetName, label, side, overridden: false);
+    return true;
+  }
+
+  private static bool WorkbookPathMatches(WorkbookIdentity workbook, string eventPath) =>
+    string.IsNullOrWhiteSpace(eventPath) ||
+    string.Equals(workbook.FullPath, eventPath, StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(workbook.Name, eventPath, StringComparison.OrdinalIgnoreCase);
 
   private void SaveAdvanceMode()
   {
@@ -2249,6 +2309,7 @@ public sealed class MainForm : Form
 
   private void EndMutation()
   {
+    cachedPlacementContext = null;
     Interlocked.Exchange(ref mutationInProgress, 0);
     SetMutationActionsEnabled(true);
     if (CanUpdateUi)
