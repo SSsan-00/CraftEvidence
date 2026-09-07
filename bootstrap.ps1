@@ -15,8 +15,8 @@ $publishPath = Join-Path $projectRoot "artifacts\publish\$Runtime"
 Push-Location $projectRoot
 try {
     $sdkVersion = (& dotnet --version).Trim()
-    if (-not $sdkVersion.StartsWith('10.')) {
-        throw "EvidenceCrafter requires .NET 10 SDK. Detected: $sdkVersion"
+    if (-not $sdkVersion.StartsWith('9.')) {
+        throw "EvidenceCrafter requires .NET 9 SDK. Detected: $sdkVersion"
     }
 
     dotnet restore $solutionPath

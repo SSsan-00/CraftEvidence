@@ -69,8 +69,8 @@ EvidenceCrafter は、既存の Case&Evidence が生成した Excel エビデン
 
 ### 3.0 対応環境の基準
 
-- 正式サポート対象は、リリース時点で .NET 10 と Microsoft がサポートしている Windows デスクトップ版、およびサポート期間内のデスクトップ Excel とする。
-- 調査時点の .NET 10 公式表では、一般向け Windows はサポート中の Windows 11 リリースが中心で、Windows 10 は Enterprise/IoT/LTSC 系の限定されたリリースだけが掲載されている。固定した「Windows 10 以降」という表現にはしない。
+- 正式サポート対象は、.NET 9で動作するWindowsデスクトップ版、およびサポート期間内のデスクトップExcelとする。
+- 配布物は.NET 9ランタイムを同梱する自己完結型とし、利用端末への.NETランタイムの事前導入を不要とする。
 - 現在の開発ホストは Windows 11 Pro build 22000、Office 2019 x86 である。どちらも正式リリースのサポート基準には採用せず、後方互換性を確認する参考環境として扱う。
 - Phase 0 で実利用先の Windows edition/version、Excel version、Office bitness を棚卸しし、サポート対象表を確定する。
 - ライフサイクル外の OS/Office が業務上必須の場合は、対応可否を実機試験し「best effort 互換」として明記する。公式サポート環境と同じ保証はしない。
@@ -112,7 +112,7 @@ EvidenceCrafter は、既存の Case&Evidence が生成した Excel エビデン
 
 | 項目 | 採用方針 | 理由 |
 |---|---|---|
-| Framework | `.NET 10 LTS` / `net10.0-windows` | 共有会話の .NET 9 は 2026-11-10 にサポート終了予定で、新規開発の寿命が短いため。ローカルには .NET 10 SDK が導入済み。 |
+| Framework | `.NET 9` / `net9.0-windows` | .NET 9系の開発・実行環境に対応し、配布物は自己完結型とするため。 |
 | UI | WinForms | Windows/Excel 専用で、Clipboard、グローバルホットキー、COM の STA 実行と相性がよい。 |
 | Excel | ROT と late-bound COM を薄い adapter に隔離 | 既に起動中の Excel を扱いつつ、Office PIA の配布・バージョン依存を避けるため。実体は Excel adapter 内に閉じ込める。 |
 | テスト | MSTest | 共有会話の確定事項。Core 単体テストと Office 必須の結合テストを分離する。 |
@@ -318,7 +318,7 @@ v1 では次を保証目標とする。
 - `docs/specification.md`
 - `docs/reference-baseline.md`
 - 匿名化した Case/Layout JSON fixture
-- .NET 10 採用、安全な書き込み契約、Shape メタデータの ADR
+- .NET 9 採用、安全な書き込み契約、Shape メタデータのADR
 
 作業:
 
@@ -578,7 +578,7 @@ preview.12では上記に加え、Case自動解析を画像配置へ接続し、
 
 | 項目 | 計画上の初期決定 |
 |---|---|
-| Framework | .NET 9 ではなく .NET 10 LTS |
+| Framework | .NET 9 / `net9.0-windows` |
 | 狭い虫食い位置 | 行を追加して挿入し、プレビューで追加行数を明示 |
 | 左右余白 | 6pt ずつ。設定変更可能 |
 | 選択画像削除 | v1 に含める。管理 Shape のみ |
@@ -607,5 +607,5 @@ preview.12では上記に加え、Case自動解析を画像配置へ接続し、
 - 共有仕様: https://chatgpt.com/share/6a950606-a918-83ee-81bb-28ec577017bd
 - .NET support policy: https://dotnet.microsoft.com/en-us/platform/support/policy
 - .NET single-file deployment: https://learn.microsoft.com/dotnet/core/deploying/single-file/overview
-- .NET 10 supported OS versions: https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md
+- .NET 9 supported OS versions: https://github.com/dotnet/core/blob/main/release-notes/9.0/supported-os.md
 - Excel 2019 lifecycle: https://learn.microsoft.com/lifecycle/products/excel-2019

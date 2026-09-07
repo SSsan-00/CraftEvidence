@@ -13,7 +13,7 @@
 - [ ] Core DTOにExcel固有型が漏れていないか
 - [ ] ROT列挙のCOM所有権が明確か
 - [ ] UIがClipboard取得だけでExcelを書き換えないか
-- [ ] package/RID/.NET 10方針が配布先に合うか
+- [ ] package/RID/.NET 9方針が配布先に合うか
 
 ## 品質
 
