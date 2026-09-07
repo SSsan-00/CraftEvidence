@@ -11,10 +11,18 @@ namespace EvidenceCrafter.Tests;
 
 [TestClass]
 [TestCategory("ExcelIntegration")]
-public sealed class ExcelSessionCatalogIntegrationTests
+[DoNotParallelize]
+public sealed partial class ExcelSessionCatalogIntegrationTests
 {
   [TestMethod]
-  public void DiscoverAndFocus_WithRealTemporaryWorkbook_VerifiesIdentityAndActiveCell()
+  public void DiscoverAndFocus_WithRealTemporaryWorkbook_VerifiesIdentityAndActiveCell() =>
+    RunSupervisedScenario(performanceOnly: false);
+
+  [TestMethod]
+  public void SnapshotReads_WithRealTemporaryWorkbook_PreserveBoundariesAndWidths() =>
+    RunSupervisedScenario(performanceOnly: true);
+
+  private static void RunSupervisedScenario(bool performanceOnly)
   {
     Exception? failure = null;
     string? inconclusiveReason = null;
@@ -24,7 +32,7 @@ public sealed class ExcelSessionCatalogIntegrationTests
     {
       try
       {
-        RunRealWorkbookScenario(supervisor);
+        RunRealWorkbookScenario(supervisor, performanceOnly);
       }
       catch (OfficeUnavailableException exception)
       {
@@ -76,7 +84,7 @@ public sealed class ExcelSessionCatalogIntegrationTests
     }
   }
 
-  private static void RunRealWorkbookScenario(ScenarioSupervisor supervisor)
+  private static void RunRealWorkbookScenario(ScenarioSupervisor supervisor, bool performanceOnly)
   {
     T RunExcelSta<T>(Func<T> action) => RunOnSta(
       action,
@@ -148,6 +156,12 @@ public sealed class ExcelSessionCatalogIntegrationTests
       SetProperty(otherWorksheet, "Name", "OtherTarget");
       _ = InvokeMethod(otherWorkbook, "SaveAs", otherWorkbookPath);
 
+      if (performanceOnly)
+      {
+        VerifySnapshotReadPerformance(otherWorksheet);
+      }
+      else
+      {
       var discovery = RunExcelSta(() => new ExcelSessionCatalog().Discover());
       var identity = discovery.Workbooks.SingleOrDefault(item =>
         string.Equals(item.FullPath, workbookPath, StringComparison.OrdinalIgnoreCase));
@@ -248,6 +262,7 @@ public sealed class ExcelSessionCatalogIntegrationTests
       SetProperty(otherAnchorCell, "Formula", "=C6");
       Release(otherAnchorCell);
       otherAnchorCell = null;
+      SetProperty(otherWorksheet, "DisplayPageBreaks", false);
       var deletedRows = RunExcelSta(() => rowService.DeleteTrailingRowsWithSnapshot(
         otherIdentity,
         "OtherTarget",
@@ -258,6 +273,12 @@ public sealed class ExcelSessionCatalogIntegrationTests
       Assert.IsTrue(deletedRows.Changed, deletedRows.Message);
       Assert.AreEqual(6, deletedRows.Count);
       Assert.IsNotNull(deletedRows.DeletionSnapshot);
+      Assert.IsFalse(Convert.ToBoolean(
+        GetRequiredProperty(otherWorksheet, "DisplayPageBreaks"),
+        CultureInfo.InvariantCulture));
+      Assert.IsFalse(Convert.ToBoolean(
+        GetRequiredProperty(application, "CutCopyMode"),
+        CultureInfo.InvariantCulture));
       using var deletionSnapshot = deletedRows.DeletionSnapshot;
       object? shiftedRow = null;
       try
@@ -282,6 +303,12 @@ public sealed class ExcelSessionCatalogIntegrationTests
       }
       var deletionUndo = RunExcelSta(() => rowService.RestoreDeletedRows(otherIdentity, deletionSnapshot));
       Assert.IsTrue(deletionUndo.Succeeded && deletionUndo.Changed, deletionUndo.Message);
+      Assert.IsFalse(Convert.ToBoolean(
+        GetRequiredProperty(otherWorksheet, "DisplayPageBreaks"),
+        CultureInfo.InvariantCulture));
+      Assert.IsFalse(Convert.ToBoolean(
+        GetRequiredProperty(application, "CutCopyMode"),
+        CultureInfo.InvariantCulture));
       otherAnchorCell = GetRequiredProperty(otherWorksheet, "Cells", 1, 2);
       Assert.AreEqual("=C6", Convert.ToString(GetRequiredProperty(otherAnchorCell, "Formula"), CultureInfo.InvariantCulture));
       Release(otherAnchorCell);
@@ -327,6 +354,9 @@ public sealed class ExcelSessionCatalogIntegrationTests
       }
       var deletionRedo = RunExcelSta(() => rowService.DeleteRestoredRows(otherIdentity, deletionSnapshot));
       Assert.IsTrue(deletionRedo.Succeeded && deletionRedo.Changed, deletionRedo.Message);
+      Assert.IsFalse(Convert.ToBoolean(
+        GetRequiredProperty(otherWorksheet, "DisplayPageBreaks"),
+        CultureInfo.InvariantCulture));
       otherAnchorCell = GetRequiredProperty(otherWorksheet, "Cells", 1, 1);
       Assert.AreEqual("keep row", Convert.ToString(
         GetRequiredProperty(otherAnchorCell, "Value2"),
@@ -373,13 +403,25 @@ public sealed class ExcelSessionCatalogIntegrationTests
       activeCell = GetRequiredProperty(application, "ActiveCell");
       Assert.AreEqual(5, Convert.ToInt32(GetRequiredProperty(activeCell, "Row"), CultureInfo.InvariantCulture));
       Assert.AreEqual(4, Convert.ToInt32(GetRequiredProperty(activeCell, "Column"), CultureInfo.InvariantCulture));
+      object? focusedWindow = null;
+      try
+      {
+        focusedWindow = GetRequiredProperty(application, "ActiveWindow");
+        Assert.AreEqual(2, Convert.ToInt32(GetRequiredProperty(focusedWindow, "ScrollRow"), CultureInfo.InvariantCulture));
+        Assert.AreEqual(1, Convert.ToInt32(GetRequiredProperty(focusedWindow, "ScrollColumn"), CultureInfo.InvariantCulture));
+      }
+      finally
+      {
+        Release(focusedWindow);
+      }
 
       File.WriteAllBytes(
         placementImagePath,
         Convert.FromBase64String(
            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
 
-      SetCellValue(worksheet, 3, 1, "automatic-case");
+      SetCellValue(worksheet, 3, 1, "automatic");
+      SetCellValue(worksheet, 3, 2, "case");
       SetRangeBorder(worksheet, 3, 1, 3, 8, 8);
       SetRangeBorder(worksheet, 1, 5, 8, 5, 10);
       SetRangeBorder(worksheet, 8, 1, 8, 8, 9);
@@ -415,6 +457,16 @@ public sealed class ExcelSessionCatalogIntegrationTests
         var snapshotResult = RunExcelSta(() => new ExcelSheetSnapshotService().Capture(identity, "FocusTarget"));
         Assert.IsTrue(snapshotResult.Succeeded, snapshotResult.Message);
         Assert.IsNotNull(snapshotResult.Snapshot);
+        var navigationSnapshot = RunExcelSta(() =>
+          new ExcelSheetSnapshotService().CaptureForNavigation(identity, "FocusTarget", includeWorksheetNames: true));
+        Assert.IsTrue(navigationSnapshot.Succeeded, navigationSnapshot.Message);
+        Assert.IsNotNull(navigationSnapshot.Snapshot);
+        Assert.IsEmpty(navigationSnapshot.Snapshot.Cells);
+        Assert.IsEmpty(navigationSnapshot.Snapshot.RowHeights);
+        Assert.IsEmpty(navigationSnapshot.Snapshot.ColumnWidths);
+        CollectionAssert.AreEqual(
+          snapshotResult.Snapshot.LayoutSignals.Anchors.ToArray(),
+          navigationSnapshot.Snapshot.LayoutSignals.Anchors.ToArray());
         Assert.IsTrue(Convert.ToBoolean(GetRequiredProperty(application, "EnableEvents"), CultureInfo.InvariantCulture));
         restoredWorkbook = GetRequiredProperty(application, "ActiveWorkbook");
         Assert.AreEqual(
@@ -454,6 +506,17 @@ public sealed class ExcelSessionCatalogIntegrationTests
         var automaticImage = automaticPlacement.PlacedImages[0];
         Assert.AreEqual("FocusTarget", automaticImage.WorksheetName);
         Assert.AreEqual(4, automaticImage.FocusCell.Column);
+        var oppositeSide = RunExcelSta(() => new ExcelCaseNavigationService().Navigate(
+          identity,
+          "FocusTarget",
+          CaseNavigationDirection.Next,
+          automaticPlacement.Analysis!.CaseLabel,
+          EvidenceSide.New,
+          sameCaseThenNext: true));
+        Assert.IsTrue(oppositeSide.Succeeded, oppositeSide.Message);
+        Assert.AreEqual("automatic-case", oppositeSide.CaseLabel);
+        Assert.AreEqual(EvidenceSide.Old, oppositeSide.Side);
+        Assert.AreEqual(5, oppositeSide.Target.Row);
 
         automaticShapes = GetRequiredProperty(worksheet, "Shapes");
         automaticShape = InvokeMethod(automaticShapes, "Item", automaticImage.ShapeName) ??
@@ -791,6 +854,7 @@ public sealed class ExcelSessionCatalogIntegrationTests
         "FocusTarget",
         new CellReference(8, 7)));
       Assert.IsTrue(enabledFocus.Succeeded, enabledFocus.Message);
+      }
     }
     catch (Exception exception)
     {

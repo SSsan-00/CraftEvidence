@@ -205,6 +205,7 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
     object? worksheet = null;
     object? cells = null;
     object? targetCell = null;
+    object? activeWindow = null;
     try
     {
       if (!WorkbookWindowMatchesIdentity(workbook, identity, out var targetWindowHandle))
@@ -228,6 +229,9 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
         targetCell = InvokeProperty(cells, "Item", focusCell.Row, focusCell.Column) ??
           throw new InvalidOperationException("The placement focus cell could not be resolved.");
         InvokeMethod(application, "Goto", targetCell, true);
+        activeWindow = GetRequiredProperty(application, "ActiveWindow");
+        SetProperty(activeWindow, "ScrollRow", Math.Max(1, focusCell.Row - 3));
+        SetProperty(activeWindow, "ScrollColumn", 1);
 
         if (!WorkbookWindowMatchesIdentity(workbook, identity, out targetWindowHandle))
         {
@@ -243,6 +247,7 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
     }
     finally
     {
+      ComRelease.Release(activeWindow);
       ComRelease.Release(targetCell);
       ComRelease.Release(cells);
       ComRelease.Release(worksheet);

@@ -41,9 +41,7 @@ public sealed class MainForm : Form
   private readonly Button nextCaseButton = new();
   private readonly Label statusLabel = new();
   private readonly Button refreshButton = new();
-  private readonly Button settingsButton = new();
   private readonly Button captureScreenButton = new();
-  private readonly Button batchImagesButton = new();
   private readonly ComboBox advanceModeBox = new();
   private readonly System.Windows.Forms.Timer clipboardRetryTimer = new();
   private readonly System.Windows.Forms.Timer selectionChangeTimer = new() { Interval = 250 };
@@ -66,11 +64,11 @@ public sealed class MainForm : Form
   private bool screenCaptureInProgress;
   private int placementContextRequestVersion;
   private bool updatingPlacementContext;
-  private bool caseLabelOverridden;
   private bool placementTargetOverridden;
   private bool placementContextRefreshInProgress;
   private bool placementContextRefreshPending;
   private bool placementContextRefreshPendingForce;
+  private ExcelSelectionChangedEventArgs? latestSelectionChange;
   private AutomaticPlacementAnalysisResult? cachedPlacementContext;
 
   private bool CanUpdateUi =>
@@ -187,126 +185,250 @@ public sealed class MainForm : Form
   {
     Text = "EvidenceCrafter";
     StartPosition = FormStartPosition.CenterScreen;
-    MinimumSize = new Size(720, 420);
-    Size = new Size(860, 500);
+    MinimumSize = new Size(680, 330);
+    Size = new Size(760, 370);
     AutoScaleMode = AutoScaleMode.Dpi;
     Font = new Font("Meiryo UI", 9F);
+    BackColor = Color.FromArgb(245, 247, 250);
 
     var layout = new TableLayoutPanel
     {
       Dock = DockStyle.Fill,
-      Padding = new Padding(18),
-      ColumnCount = 3,
-      RowCount = 8,
+      Padding = new Padding(14, 12, 14, 12),
+      ColumnCount = 1,
+      RowCount = 5,
     };
-    layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
     layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-    layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
+    for (var row = 0; row < 5; row++)
+    {
+      layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+    }
 
-    layout.Controls.Add(CreateLabel("Workbook"), 0, 0);
+    layout.Controls.Add(new Label
+    {
+      AutoSize = true,
+      Text = "EvidenceCrafter",
+      Font = new Font("Meiryo UI", 15F, FontStyle.Bold),
+      ForeColor = Color.FromArgb(31, 78, 121),
+      Anchor = AnchorStyles.Left,
+      Margin = new Padding(7, 2, 0, 8),
+    }, 0, 0);
+
+    var workbookRow = CreateCard(3);
+    workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+    workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+    workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    workbookRow.Controls.Add(CreateLabel("対象ブック"), 0, 0);
     workbookSelector.Dock = DockStyle.Fill;
     workbookSelector.DropDownStyle = ComboBoxStyle.DropDownList;
+    workbookSelector.ItemHeight = 21;
+    workbookSelector.Margin = new Padding(0);
     workbookSelector.DisplayMember = nameof(WorkbookIdentity.DisplayLabel);
     workbookSelector.SelectedIndexChanged += async (_, _) => await RefreshPlacementContextAsync(force: true);
-    layout.Controls.Add(workbookSelector, 1, 0);
-
+    workbookRow.Controls.Add(workbookSelector, 1, 0);
     refreshButton.Text = "更新";
-    refreshButton.Dock = DockStyle.Fill;
+    StyleButton(refreshButton);
+    refreshButton.Margin = new Padding(6, 0, 0, 0);
     refreshButton.Click += async (_, _) => await RefreshWorkbooksAsync();
-    layout.Controls.Add(refreshButton, 2, 0);
+    workbookRow.Controls.Add(refreshButton, 2, 0);
+    layout.Controls.Add(workbookRow, 0, 1);
 
-    layout.Controls.Add(CreateLabel("配置先"), 0, 1);
-    var sidePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+    var targetCard = CreateCard(4);
+    targetCard.Margin = new Padding(0, 8, 0, 8);
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    var sheetLabel = CreateLabel("Sheet");
+    sheetLabel.Margin = new Padding(3, 0, 3, 6);
+    targetCard.Controls.Add(sheetLabel, 0, 0);
+    worksheetNameBox.Dock = DockStyle.Fill;
+    StyleTextBox(worksheetNameBox);
+    worksheetNameBox.Margin = new Padding(0, 0, 0, 6);
+    worksheetNameBox.PlaceholderText = "シート名";
+    worksheetNameBox.TextChanged += (_, _) => MarkPlacementTargetOverridden();
+    targetCard.Controls.Add(worksheetNameBox, 1, 0);
+    targetCard.SetColumnSpan(worksheetNameBox, 3);
+
+    var placementLabel = CreateLabel("配置先");
+    placementLabel.Margin = new Padding(3, 0, 3, 6);
+    targetCard.Controls.Add(placementLabel, 0, 1);
+    var sidePanel = new FlowLayoutPanel
+    {
+      AutoSize = true,
+      WrapContents = false,
+      Margin = new Padding(0, 0, 0, 6),
+      Padding = new Padding(0),
+    };
     newSideButton.Text = "New";
+    StyleSideButton(newSideButton);
     newSideButton.Checked = true;
     oldSideButton.Text = "Old";
-    newSideButton.CheckedChanged += (_, _) => MarkPlacementTargetOverridden();
-    oldSideButton.CheckedChanged += (_, _) => MarkPlacementTargetOverridden();
+    StyleSideButton(oldSideButton);
+    newSideButton.CheckedChanged += (_, _) =>
+    {
+      UpdateSideButtonColors();
+      MarkPlacementTargetOverridden();
+    };
+    oldSideButton.CheckedChanged += (_, _) =>
+    {
+      UpdateSideButtonColors();
+      MarkPlacementTargetOverridden();
+    };
     sidePanel.Controls.Add(newSideButton);
     sidePanel.Controls.Add(oldSideButton);
-    previousCaseButton.Text = "前のCase";
-    previousCaseButton.AutoSize = true;
-    previousCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Previous);
-    nextCaseButton.Text = "次のCase";
-    nextCaseButton.AutoSize = true;
-    nextCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Next);
-    sidePanel.Controls.Add(previousCaseButton);
-    sidePanel.Controls.Add(nextCaseButton);
-    sidePanel.Controls.Add(new Label { AutoSize = true, Text = "Case", Margin = new Padding(12, 7, 4, 0) });
-    caseLabelBox.Width = 100;
-    caseLabelBox.PlaceholderText = "自動判定";
+    targetCard.Controls.Add(sidePanel, 1, 1);
+
+    var casePanel = new FlowLayoutPanel
+    {
+      AutoSize = true,
+      WrapContents = false,
+      Margin = new Padding(8, 0, 0, 6),
+      Padding = new Padding(0),
+      Anchor = AnchorStyles.Left,
+    };
+    casePanel.Controls.Add(new Label { AutoSize = true, Text = "Case", Margin = new Padding(0, 7, 5, 0) });
+    caseLabelBox.Width = 86;
+    StyleTextBox(caseLabelBox);
+    caseLabelBox.PlaceholderText = "自動";
     caseLabelBox.TextChanged += (_, _) =>
     {
       if (!updatingPlacementContext)
       {
-        caseLabelOverridden = true;
         placementTargetOverridden = true;
       }
     };
-    sidePanel.Controls.Add(caseLabelBox);
-    layout.Controls.Add(sidePanel, 1, 1);
-    layout.SetColumnSpan(sidePanel, 2);
+    casePanel.Controls.Add(caseLabelBox);
+    previousCaseButton.Text = "前のCase";
+    StyleButton(previousCaseButton);
+    previousCaseButton.Margin = new Padding(6, 0, 3, 0);
+    previousCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Previous);
+    nextCaseButton.Text = "次のCase";
+    StyleButton(nextCaseButton);
+    nextCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Next);
+    casePanel.Controls.Add(previousCaseButton);
+    casePanel.Controls.Add(nextCaseButton);
+    targetCard.Controls.Add(casePanel, 2, 1);
+    targetCard.SetColumnSpan(casePanel, 2);
 
-    layout.Controls.Add(CreateLabel("Sheet"), 0, 2);
-    worksheetNameBox.Dock = DockStyle.Fill;
-    worksheetNameBox.PlaceholderText = "シート名";
-    worksheetNameBox.TextChanged += (_, _) => MarkPlacementTargetOverridden();
-    layout.Controls.Add(worksheetNameBox, 1, 2);
-    layout.SetColumnSpan(worksheetNameBox, 2);
-
-    layout.Controls.Add(CreateLabel("配置後"), 0, 3);
+    targetCard.Controls.Add(CreateLabel("配置後"), 0, 2);
     advanceModeBox.Dock = DockStyle.Fill;
     advanceModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
+    advanceModeBox.ItemHeight = 21;
+    advanceModeBox.Margin = new Padding(0);
     advanceModeBox.Items.AddRange(["同じCaseの反対Sideを優先", "同じSideの次Caseを優先"]);
     advanceModeBox.SelectedIndex = settings.AdvanceMode is PlacementAdvanceMode.NextCaseSameSide ? 1 : 0;
     advanceModeBox.SelectedIndexChanged += (_, _) => SaveAdvanceMode();
-    layout.Controls.Add(advanceModeBox, 1, 3);
-    layout.SetColumnSpan(advanceModeBox, 2);
+    targetCard.Controls.Add(advanceModeBox, 1, 2);
+    targetCard.SetColumnSpan(advanceModeBox, 3);
+    layout.Controls.Add(targetCard, 0, 2);
 
-    layout.Controls.Add(CreateLabel("History"), 0, 5);
-    var historyActions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+    var actions = new FlowLayoutPanel
+    {
+      AutoSize = true,
+      Dock = DockStyle.Fill,
+      BackColor = Color.White,
+      Padding = new Padding(10, 7, 10, 7),
+      WrapContents = false,
+      Margin = new Padding(0),
+    };
+    captureScreenButton.Text = "画像をキャプチャ";
+    StyleButton(captureScreenButton, primary: true);
+    captureScreenButton.Width = 172;
+    captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
+    actions.Controls.Add(captureScreenButton);
+    actions.Controls.Add(new Label { AutoSize = true, Text = "履歴", Margin = new Padding(18, 7, 4, 0), ForeColor = Color.DimGray });
     undoButton.Text = "元に戻す";
-    undoButton.AutoSize = true;
+    StyleButton(undoButton);
     undoButton.Enabled = false;
     undoButton.Click += async (_, _) => await UndoAsync();
     redoButton.Text = "やり直す";
-    redoButton.AutoSize = true;
+    StyleButton(redoButton);
     redoButton.Enabled = false;
     redoButton.Click += async (_, _) => await RedoAsync();
-    historyActions.Controls.Add(undoButton);
-    historyActions.Controls.Add(redoButton);
-    layout.Controls.Add(historyActions, 1, 5);
-    layout.SetColumnSpan(historyActions, 2);
+    actions.Controls.Add(undoButton);
+    actions.Controls.Add(redoButton);
+    layout.Controls.Add(actions, 0, 3);
 
-    layout.Controls.Add(CreateLabel("Capture"), 0, 4);
-    var capturePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
-    captureScreenButton.Text = "画像をキャプチャ";
-    captureScreenButton.AutoSize = true;
-    captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
-    batchImagesButton.Text = "複数画像を自動配置";
-    batchImagesButton.AutoSize = true;
-    batchImagesButton.Click += async (_, _) => await PlaceImageFilesAutomaticallyAsync();
-    capturePanel.Controls.Add(captureScreenButton);
-    capturePanel.Controls.Add(batchImagesButton);
-    layout.Controls.Add(capturePanel, 1, 4);
-    layout.SetColumnSpan(capturePanel, 2);
-
-    layout.Controls.Add(CreateLabel("Status"), 0, 6);
+    var statusPanel = new Panel
+    {
+      AutoSize = true,
+      Dock = DockStyle.Fill,
+      BackColor = Color.FromArgb(234, 240, 247),
+      Padding = new Padding(10, 7, 10, 7),
+      Margin = new Padding(0, 8, 0, 0),
+    };
     statusLabel.AutoSize = true;
     statusLabel.Text = "Ready";
-    layout.Controls.Add(statusLabel, 1, 6);
-    layout.SetColumnSpan(statusLabel, 2);
-
-    var closeButton = new Button { Text = "閉じる", Anchor = AnchorStyles.Right };
-    closeButton.Click += (_, _) => Close();
-    settingsButton.Text = "設定";
-    settingsButton.Anchor = AnchorStyles.Right;
-    settingsButton.Click += (_, _) => ShowSettings();
-    layout.Controls.Add(settingsButton, 1, 7);
-    layout.Controls.Add(closeButton, 2, 7);
+    statusLabel.ForeColor = Color.FromArgb(47, 79, 112);
+    statusPanel.Controls.Add(statusLabel);
+    layout.Controls.Add(statusPanel, 0, 4);
 
     Controls.Add(layout);
+    UpdateSideButtonColors();
     Shown += async (_, _) => await RefreshWorkbooksAsync();
+  }
+
+  private static TableLayoutPanel CreateCard(int columnCount) => new()
+  {
+    AutoSize = true,
+    Dock = DockStyle.Fill,
+    BackColor = Color.White,
+    Padding = new Padding(10, 8, 10, 8),
+    ColumnCount = columnCount,
+    RowCount = 3,
+    Margin = new Padding(0),
+  };
+
+  private static void StyleButton(Button button, bool primary = false)
+  {
+    button.AutoSize = false;
+    button.Size = new Size(
+      Math.Max(64, TextRenderer.MeasureText(button.Text, button.Font).Width + 24),
+      28);
+    button.FlatStyle = FlatStyle.Flat;
+    button.FlatAppearance.BorderColor = primary ? Color.FromArgb(31, 112, 190) : Color.FromArgb(202, 210, 220);
+    button.FlatAppearance.BorderSize = 1;
+    button.BackColor = primary ? Color.FromArgb(31, 112, 190) : Color.White;
+    button.ForeColor = primary ? Color.White : Color.FromArgb(54, 65, 77);
+    button.Margin = new Padding(3, 0, 3, 0);
+    button.Padding = new Padding(6, 0, 6, 0);
+  }
+
+  private static void StyleSideButton(RadioButton button)
+  {
+    button.Appearance = Appearance.Button;
+    button.AutoSize = false;
+    button.Size = new Size(58, 28);
+    button.TextAlign = ContentAlignment.MiddleCenter;
+    button.FlatStyle = FlatStyle.Flat;
+    button.FlatAppearance.BorderColor = Color.FromArgb(202, 210, 220);
+    button.FlatAppearance.CheckedBackColor = Color.FromArgb(0, 91, 150);
+    button.FlatAppearance.MouseOverBackColor = Color.FromArgb(225, 237, 248);
+    button.Margin = new Padding(0, 0, 4, 0);
+  }
+
+  private static void StyleTextBox(TextBox textBox)
+  {
+    textBox.AutoSize = false;
+    textBox.Height = 28;
+    textBox.Margin = new Padding(0);
+  }
+
+  private void UpdateSideButtonColors()
+  {
+    ApplySideButtonColor(newSideButton);
+    ApplySideButtonColor(oldSideButton);
+  }
+
+  private static void ApplySideButtonColor(RadioButton button)
+  {
+    var selected = button.Checked;
+    button.BackColor = selected ? Color.FromArgb(0, 91, 150) : Color.White;
+    button.ForeColor = selected ? Color.White : Color.FromArgb(54, 65, 77);
+    button.FlatAppearance.BorderColor = selected
+      ? Color.FromArgb(0, 70, 120)
+      : Color.FromArgb(202, 210, 220);
   }
 
   private static Label CreateLabel(string text) => new()
@@ -339,7 +461,16 @@ public sealed class MainForm : Form
         var pendingForce = placementContextRefreshPendingForce;
         placementContextRefreshPending = false;
         placementContextRefreshPendingForce = false;
-        BeginInvoke(async () => await RefreshPlacementContextAsync(pendingForce));
+        var appliedLatestSelection = !pendingForce && latestSelectionChange is not null &&
+          TryApplyCachedSelection(latestSelectionChange);
+        if (appliedLatestSelection)
+        {
+          latestSelectionChange = null;
+        }
+        else
+        {
+          BeginInvoke(async () => await RefreshPlacementContextAsync(pendingForce));
+        }
       }
     }
   }
@@ -359,7 +490,7 @@ public sealed class MainForm : Form
       "ActiveSheet",
       SelectedSide,
       [new AutomaticPlacementImage("context", new ImageDimensions(1, 1))],
-      preferActiveGap: true,
+      preferActiveGap: false,
       horizontalMarginPoints: settings.HorizontalMarginPoints,
       autoDetectSide: true));
     if (requestVersion != Volatile.Read(ref placementContextRequestVersion) || !CanUpdateUi)
@@ -378,7 +509,7 @@ public sealed class MainForm : Form
   }
 
   private string? RequestedCaseLabel =>
-    caseLabelOverridden && !string.IsNullOrWhiteSpace(caseLabelBox.Text)
+    !string.IsNullOrWhiteSpace(caseLabelBox.Text)
       ? caseLabelBox.Text.Trim()
       : null;
 
@@ -401,7 +532,6 @@ public sealed class MainForm : Form
       caseLabelBox.Text = caseLabel;
       oldSideButton.Checked = side is EvidenceSide.Old;
       newSideButton.Checked = side is EvidenceSide.New;
-      caseLabelOverridden = overridden;
       placementTargetOverridden = overridden;
     }
     finally
@@ -436,8 +566,10 @@ public sealed class MainForm : Form
         return;
       }
 
+      latestSelectionChange = eventArgs;
       if (TryApplyCachedSelection(eventArgs))
       {
+        latestSelectionChange = null;
         return;
       }
 
@@ -461,8 +593,8 @@ public sealed class MainForm : Form
       return false;
     }
 
-    var anchor = signals.Anchors
-      .Where(candidate => candidate.HasCaseValue && candidate.Row <= selection.Row)
+    var anchor = ExcelAutomaticPlacementService.ConfirmedAnchors(signals)
+      .Where(candidate => candidate.Row <= selection.Row)
       .OrderBy(candidate => candidate.Row)
       .LastOrDefault();
     if (anchor is null)
@@ -512,27 +644,6 @@ public sealed class MainForm : Form
     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
     {
       WriteDiagnostic(DiagnosticEventKind.Application, DiagnosticOutcome.Failed, exception: exception);
-    }
-  }
-
-  private void ShowSettings()
-  {
-    using var dialog = new SettingsDialog(settings);
-    if (dialog.ShowDialog(this) != DialogResult.OK)
-    {
-      return;
-    }
-
-    settings = dialog.Result.Normalize();
-    advanceModeBox.SelectedIndex = settings.AdvanceMode is PlacementAdvanceMode.NextCaseSameSide ? 1 : 0;
-    try
-    {
-      settingsStore.Save(settings);
-      SetStatus("設定を保存しました。ショートカット設定は次回起動時に反映されます。");
-    }
-    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-    {
-      SetStatus($"設定を保存できませんでした: {exception.Message}");
     }
   }
 
@@ -872,7 +983,7 @@ public sealed class MainForm : Form
           worksheetName,
           SelectedSide,
           [request],
-          preferActiveGap: true,
+          preferActiveGap: false,
           horizontalMarginPoints: settings.HorizontalMarginPoints,
           requestedCaseLabel: requestedCaseLabel));
 
@@ -901,7 +1012,7 @@ public sealed class MainForm : Form
       if (previewResult == DialogResult.Yes && workbook is not null)
       {
         await PlaceClipboardImageAutomaticallyAsync(
-          workbook, worksheetName, SelectedSide, image, true, requestedCaseLabel, imagePath, analysis);
+          workbook, worksheetName, SelectedSide, image, requestedCaseLabel, imagePath, analysis);
         imagePath = string.Empty;
       }
       else if (previewResult == DialogResult.Retry && workbook is not null)
@@ -911,7 +1022,7 @@ public sealed class MainForm : Form
         {
           using var editedImage = editor.GetEditedImage();
           await PlaceClipboardImageAutomaticallyAsync(
-            workbook, worksheetName, SelectedSide, editedImage, true, requestedCaseLabel);
+            workbook, worksheetName, SelectedSide, editedImage, requestedCaseLabel);
         }
         else
         {
@@ -960,7 +1071,6 @@ public sealed class MainForm : Form
     string worksheetName,
     EvidenceSide side,
     Image image,
-    bool preferActiveGap,
     string? requestedCaseLabel = null,
     string? preparedImagePath = null,
     AutomaticPlacementAnalysisResult? preparedAnalysis = null)
@@ -987,7 +1097,7 @@ public sealed class MainForm : Form
         worksheetName,
         side,
         [new AutomaticPlacementImage(imagePath, dimensions)],
-        preferActiveGap,
+        preferActiveGap: false,
         settings.HorizontalMarginPoints,
         preparedAnalysis,
         requestedCaseLabel));
@@ -999,17 +1109,23 @@ public sealed class MainForm : Form
 
       using var stream = new MemoryStream();
       imageCopy.Save(stream, ImageFormat.Png);
-      var cleanup = await StaTask.Run(() => caseMaintenanceService.TrimCaseTail(
-        workbook,
-        result.PlacedImages[^1].WorksheetName,
-        result.PlacedImages[^1].Target.Metadata.AnchorCell.Row));
+      RowDeletionSnapshot? cleanupSnapshot = null;
+      if (result.Analysis?.CompletesCaseAfterPlacement == true)
+      {
+        SetStatus("New／OldがそろったためCase末尾を整理しています…");
+        var cleanup = await StaTask.Run(() => caseMaintenanceService.TrimCompletedCaseTail(
+          workbook,
+          result.PlacedImages[^1].WorksheetName,
+          result.PlacedImages[^1].Target.Metadata.AnchorCell.Row));
+        cleanupSnapshot = cleanup.Changed ? cleanup.DeletionSnapshot : null;
+      }
       AddAutomaticPlacementHistory(
         workbook,
         side,
         [new HistoryImage(stream.ToArray(), dimensions)],
         result.AppliedInsertions,
         result.PlacedImages,
-        cleanup.Changed ? cleanup.DeletionSnapshot : null);
+        cleanupSnapshot);
 
       WriteDiagnostic(
         DiagnosticEventKind.MutationResult,
@@ -1174,91 +1290,6 @@ public sealed class MainForm : Form
     }
   }
 
-  private async Task PlaceImageFilesAutomaticallyAsync()
-  {
-    if (!TryGetMutationTarget(out var workbook, out var worksheetName))
-    {
-      return;
-    }
-
-    using var dialog = new OpenFileDialog
-    {
-      Title = "自動配置する画像を順番に選択",
-      Filter = "画像ファイル|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff",
-      Multiselect = true,
-      CheckFileExists = true,
-    };
-    if (dialog.ShowDialog(this) != DialogResult.OK || dialog.FileNames.Length == 0 || !TryBeginMutation())
-    {
-      return;
-    }
-
-    var temporaryPaths = new List<string>();
-    try
-    {
-      var side = SelectedSide;
-      var requests = new List<AutomaticPlacementImage>(dialog.FileNames.Length);
-      var historyImages = new List<HistoryImage>(dialog.FileNames.Length);
-      foreach (var sourcePath in dialog.FileNames)
-      {
-        using var source = Image.FromFile(sourcePath);
-        using var bitmap = new Bitmap(source);
-        var path = Path.Combine(Path.GetTempPath(), "EvidenceCrafter", $"batch-{Guid.NewGuid():N}.png");
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        bitmap.Save(path, ImageFormat.Png);
-        temporaryPaths.Add(path);
-        var dimensions = ToImageDimensions(bitmap);
-        requests.Add(new AutomaticPlacementImage(path, dimensions));
-        using var stream = new MemoryStream();
-        bitmap.Save(stream, ImageFormat.Png);
-        historyImages.Add(new HistoryImage(stream.ToArray(), dimensions));
-      }
-
-      SetStatus($"{requests.Count}件の画像をCase／Sideへ自動配置しています…");
-      var result = await StaTask.Run(() => automaticPlacementService.PlaceImages(
-        workbook,
-        worksheetName,
-        side,
-        requests,
-        preferActiveGap: true,
-        horizontalMarginPoints: settings.HorizontalMarginPoints,
-        requestedCaseLabel: RequestedCaseLabel));
-      SetStatus(result.Message);
-      if (result.Succeeded)
-      {
-        var cleanup = await StaTask.Run(() => caseMaintenanceService.TrimCaseTail(
-          workbook,
-          result.PlacedImages[^1].WorksheetName,
-          result.PlacedImages[^1].Target.Metadata.AnchorCell.Row));
-        AddAutomaticPlacementHistory(
-          workbook,
-          side,
-          historyImages,
-          result.AppliedInsertions,
-          result.PlacedImages,
-          cleanup.Changed ? cleanup.DeletionSnapshot : null);
-        await AdvanceAfterPlacementAsync(
-          workbook,
-          result.PlacedImages[^1].WorksheetName,
-          result.Analysis?.CaseLabel ?? caseLabelBox.Text,
-          side);
-      }
-    }
-    catch (Exception exception) when (exception is not OutOfMemoryException)
-    {
-      SetStatus($"複数画像の自動配置に失敗しました: {exception.Message}");
-      WriteDiagnostic(DiagnosticEventKind.MutationResult, DiagnosticOutcome.Failed, exception: exception);
-    }
-    finally
-    {
-      foreach (var path in temporaryPaths)
-      {
-        try { File.Delete(path); } catch (IOException) { }
-      }
-      EndMutation();
-    }
-  }
-
   private async Task NavigateCaseAsync(CaseNavigationDirection direction)
   {
     if (!TryGetMutationTarget(out var workbook, out var worksheetName) || !TryBeginMutation())
@@ -1295,6 +1326,7 @@ public sealed class MainForm : Form
     string caseLabel,
     EvidenceSide side)
   {
+    SetStatus("次の空いているCase／Sideを検索しています…");
     var result = await StaTask.Run(() => caseNavigationService.Navigate(
       workbook,
       worksheetName,
@@ -1302,6 +1334,7 @@ public sealed class MainForm : Form
       caseLabel,
       side,
       settings.AdvanceMode is PlacementAdvanceMode.SameCaseThenNext));
+    SetStatus(result.Message);
     if (result.Succeeded)
     {
       ApplyNavigationResult(result);
@@ -1322,7 +1355,6 @@ public sealed class MainForm : Form
       caseLabelBox.Text = result.CaseLabel;
       newSideButton.Checked = result.Side is EvidenceSide.New;
       oldSideButton.Checked = result.Side is EvidenceSide.Old;
-      caseLabelOverridden = true;
       placementTargetOverridden = true;
     }
     finally
@@ -2298,7 +2330,6 @@ public sealed class MainForm : Form
       deleteImageButton.Enabled = false;
       previousCaseButton.Enabled = false;
       nextCaseButton.Enabled = false;
-      batchImagesButton.Enabled = false;
       captureScreenButton.Enabled = false;
       return true;
     }
@@ -2318,7 +2349,6 @@ public sealed class MainForm : Form
       deleteImageButton.Enabled = true;
       previousCaseButton.Enabled = true;
       nextCaseButton.Enabled = true;
-      batchImagesButton.Enabled = true;
       captureScreenButton.Enabled = !screenCaptureInProgress;
     }
   }

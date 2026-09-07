@@ -21,6 +21,18 @@ public sealed class TrailingRowDeletionPlannerTests
   }
 
   [TestMethod]
+  public void Plan_CompletedCase_LeavesTwoTrailingRows()
+  {
+    var rows = Enumerable.Range(13, 8)
+      .Select(row => new RowSafetyState(row, false, false, false, false, false))
+      .ToArray();
+
+    var result = planner.Plan(caseStartRow: 3, caseEndRow: 20, lastContentRow: 10, tailRows: 2, rows);
+
+    CollectionAssert.AreEqual(new[] { 13, 14, 15, 16, 17, 18, 19 }, result.ToArray());
+  }
+
+  [TestMethod]
   public void Plan_StopsAtFirstUnsafeTrailingRow()
   {
     RowSafetyState[] rows =

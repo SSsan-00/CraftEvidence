@@ -229,7 +229,7 @@ public sealed class ExcelRowMutationService
     ArgumentNullException.ThrowIfNull(workbook);
     ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
     ValidateCaseRange(caseStartRow, caseEndRow);
-    if (tailRows is < 4 or > ExcelWorksheetLimits.MaximumRow)
+    if (tailRows is < 2 or > ExcelWorksheetLimits.MaximumRow)
     {
       throw new ArgumentOutOfRangeException(nameof(tailRows));
     }
@@ -311,7 +311,7 @@ public sealed class ExcelRowMutationService
     ArgumentNullException.ThrowIfNull(workbook);
     ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
     ValidateCaseRange(caseStartRow, caseEndRow);
-    if (tailRows is < 4 or > ExcelWorksheetLimits.MaximumRow)
+    if (tailRows is < 2 or > ExcelWorksheetLimits.MaximumRow)
     {
       throw new ArgumentOutOfRangeException(nameof(tailRows));
     }
@@ -803,7 +803,7 @@ public sealed class ExcelRowMutationService
         object? bottomRightCell = null;
         try
         {
-          shape = InvokeProperty(shapes, "Item", index) ??
+          shape = InvokeMethod(shapes, "Item", index) ??
             throw new InvalidOperationException("The worksheet Shape could not be resolved.");
           topLeftCell = GetRequiredProperty(shape, "TopLeftCell");
           bottomRightCell = GetRequiredProperty(shape, "BottomRightCell");
@@ -901,6 +901,7 @@ public sealed class ExcelRowMutationService
     var eventsSuppressed = false;
     var screenUpdatingWasEnabled = true;
     var displayAlertsWereEnabled = true;
+    bool? displayPageBreaksWereVisible = null;
     var applicationStateRead = false;
     var resolvedWorksheetName = worksheetName;
     var resolvedStartRow = plan.StartRow;
@@ -928,6 +929,11 @@ public sealed class ExcelRowMutationService
       SetProperty(application, "DisplayAlerts", false);
       InvokeMethod(workbook, "Activate");
       worksheet = ResolveWorksheet(application, workbook, worksheetName, out resolvedWorksheetName);
+      if (TryGetProperty(worksheet, "DisplayPageBreaks", out var displayPageBreaks) &&
+        displayPageBreaks is not null && displayPageBreaks is not DBNull)
+      {
+        displayPageBreaksWereVisible = Convert.ToBoolean(displayPageBreaks, CultureInfo.InvariantCulture);
+      }
       if (IsWorksheetProtected(worksheet))
       {
         return RowMutationResult.Failed(
@@ -1152,6 +1158,18 @@ public sealed class ExcelRowMutationService
     }
     finally
     {
+      if (worksheet is not null && displayPageBreaksWereVisible.HasValue)
+      {
+        try
+        {
+          SetProperty(worksheet, "DisplayPageBreaks", displayPageBreaksWereVisible.Value);
+        }
+        catch (Exception exception) when (IsAutomationFailure(exception))
+        {
+          // DisplayPageBreaks is unavailable when Excel has no usable printer.
+        }
+      }
+
       if (eventsSuppressed)
       {
         try
@@ -1257,24 +1275,18 @@ public sealed class ExcelRowMutationService
       {
         throw new InvalidOperationException("数式依存の安全確認範囲が250,000セルを超えるため、行削除を中止しました。");
       }
+      var formulas = GetRequiredProperty(usedRange, "Formula");
       var result = new Dictionary<CellReference, string>();
       for (var row = firstRow; row < checked(firstRow + rowCount); row++)
       {
         for (var column = firstColumn; column < checked(firstColumn + columnCount); column++)
         {
-          object? cell = null;
-          try
+          var formula = Convert.ToString(
+            MatrixValue(formulas, row - firstRow, column - firstColumn, rowCount, columnCount),
+            CultureInfo.InvariantCulture);
+          if (!string.IsNullOrEmpty(formula) && formula.StartsWith("=", StringComparison.Ordinal))
           {
-            cell = InvokeProperty(worksheet, "Cells", row, column);
-            var formula = Convert.ToString(GetRequiredProperty(cell!, "Formula"), CultureInfo.InvariantCulture);
-            if (!string.IsNullOrEmpty(formula) && formula.StartsWith("=", StringComparison.Ordinal))
-            {
-              result[new CellReference(row, column)] = formula;
-            }
-          }
-          finally
-          {
-            ComRelease.Release(cell);
+            result[new CellReference(row, column)] = formula;
           }
         }
       }
@@ -1286,6 +1298,18 @@ public sealed class ExcelRowMutationService
       ComRelease.Release(columns);
       ComRelease.Release(usedRange);
     }
+  }
+
+  private static object? MatrixValue(object? value, int rowOffset, int columnOffset, int rowCount, int columnCount)
+  {
+    if (value is not Array array)
+    {
+      return rowCount == 1 && columnCount == 1 ? value : null;
+    }
+
+    return array.GetValue(
+      checked(rowOffset + array.GetLowerBound(0)),
+      checked(columnOffset + array.GetLowerBound(1)));
   }
 
   private static bool FormulaMapsEqual(
@@ -1590,6 +1614,7 @@ public sealed class ExcelRowMutationService
       }
       finally
       {
+        ClearCutCopyMode(application);
         ComRelease.Release(destinationRows);
       }
 
@@ -1647,6 +1672,7 @@ public sealed class ExcelRowMutationService
     }
     finally
     {
+      ClearCutCopyMode(application);
       try { if (backupWorkbook is not null) _ = InvokeMethod(backupWorkbook, "Close", false); } catch (Exception exception) when (IsAutomationFailure(exception)) { }
       ComRelease.Release(sourceRows);
       ComRelease.Release(firstRow);
@@ -1655,6 +1681,18 @@ public sealed class ExcelRowMutationService
       ComRelease.Release(worksheets);
       ComRelease.Release(backupWorkbook);
       ComRelease.Release(workbooks);
+    }
+  }
+
+  private static void ClearCutCopyMode(object application)
+  {
+    try
+    {
+      SetProperty(application, "CutCopyMode", false);
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      // Copy-mode cleanup must not hide the result of the row operation.
     }
   }
 

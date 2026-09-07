@@ -19,7 +19,7 @@ public sealed class TrailingRowDeletionPlanner
       lastContentRow < 0 ||
       (lastContentRow > 0 && lastContentRow < caseStartRow) ||
       lastContentRow > caseEndRow ||
-      tailRows is < 4 or > ExcelWorksheetLimits.MaximumRow)
+      tailRows is < 2 or > ExcelWorksheetLimits.MaximumRow)
     {
       throw new ArgumentOutOfRangeException(nameof(caseEndRow));
     }

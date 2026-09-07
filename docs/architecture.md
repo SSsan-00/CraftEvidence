@@ -28,7 +28,7 @@ EvidenceCrafter.Tests ─────> EvidenceCrafter.Core
 - COMオブジェクトをCore DTOへ変換
 - 接続切断を通常状態として扱う
 - ExcelMutationサービスがCoreの計画を変更直前に再検証して実行
-- 明示承認された単一画像を、検証済みWorkbook/SheetのActiveCellへShapeとして配置
+- 明示承認された単一画像を、検証済みWorkbook/Sheet/Case/SideのCase先頭基準位置へShapeとして配置
 - 明示確認されたActiveCell直上の行挿入と、ライブ安全Snapshotに基づく連続末尾行削除
 - 配置検証後に対象Workbook/Sheetと画像左上セルへフォーカスを移す
 - Workbook終了イベントを監視し、閉じた接続世代を即時に無効化する

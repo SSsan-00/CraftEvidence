@@ -19,7 +19,21 @@ public sealed class ExcelCaseMaintenanceService
     WorkbookIdentity workbook,
     string worksheetName,
     int caseRow,
-    int tailRows = 4)
+    int tailRows = 4) =>
+    TrimCaseTail(workbook, worksheetName, caseRow, tailRows, requireBothSides: false);
+
+  public RowMutationResult TrimCompletedCaseTail(
+    WorkbookIdentity workbook,
+    string worksheetName,
+    int caseRow) =>
+    TrimCaseTail(workbook, worksheetName, caseRow, tailRows: 2, requireBothSides: true);
+
+  private RowMutationResult TrimCaseTail(
+    WorkbookIdentity workbook,
+    string worksheetName,
+    int caseRow,
+    int tailRows,
+    bool requireBothSides)
   {
     var captured = snapshotService.Capture(workbook, worksheetName, caseRow);
     if (!captured.Succeeded || captured.Snapshot is null)
@@ -37,11 +51,37 @@ public sealed class ExcelCaseMaintenanceService
         $"Case末尾を安全に解析できないため行整理を行いません: {string.Join(" ", analyzed.Reasons)}");
     }
 
+    if (requireBothSides && !HasBothSides(captured.Snapshot, analyzed.Layout))
+    {
+      return RowMutationResult.NoChange(
+        RowMutationOperation.Delete,
+        captured.Snapshot.WorksheetName,
+        "NewとOldの両方に画像がそろっていないため、Case末尾は整理していません。");
+    }
+
     return rowMutationService.DeleteTrailingRowsWithSnapshot(
       workbook,
       captured.Snapshot.WorksheetName,
       analyzed.Layout.StartRow,
       analyzed.Layout.EndRow,
       tailRows);
+  }
+
+  internal static bool HasBothSides(SheetSnapshot snapshot, EvidenceCaseLayout layout) =>
+    HasManagedImage(snapshot, layout, EvidenceSide.New) &&
+    HasManagedImage(snapshot, layout, EvidenceSide.Old);
+
+  internal static bool HasManagedImage(
+    SheetSnapshot snapshot,
+    EvidenceCaseLayout layout,
+    EvidenceSide side)
+  {
+    var region = side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
+    return snapshot.Shapes.Any(shape =>
+      shape.IsManagedImage &&
+      shape.StartRow <= layout.EndRow &&
+      shape.EndRow >= layout.StartRow + 1 &&
+      shape.StartColumn >= region.FirstColumn + 1 &&
+      shape.StartColumn <= region.LastColumn);
   }
 }

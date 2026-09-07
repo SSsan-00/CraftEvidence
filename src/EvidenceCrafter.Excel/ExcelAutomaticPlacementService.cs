@@ -37,7 +37,7 @@ public sealed class ExcelAutomaticPlacementService
     string worksheetName,
     EvidenceSide side,
     IReadOnlyList<AutomaticPlacementImage> images,
-    bool preferActiveGap = true,
+    bool preferActiveGap = false,
     double horizontalMarginPoints = 6,
     string? requestedCaseLabel = null,
     bool autoDetectSide = false)
@@ -69,7 +69,9 @@ public sealed class ExcelAutomaticPlacementService
       return AutomaticPlacementAnalysisResult.Failed(selectedCase.Message);
     }
 
-    if (selectedCase.Row != snapshot.ActiveCell.Row)
+    var activeCaseRow = ConfirmedAnchors(snapshot.LayoutSignals)
+      .LastOrDefault(anchor => anchor.Row <= snapshot.ActiveCell.Row)?.Row;
+    if (selectedCase.Row != activeCaseRow)
     {
       captured = snapshotService.Capture(workbook, snapshot.WorksheetName, selectedCase.Row);
       if (!captured.Succeeded || captured.Snapshot is null)
@@ -107,7 +109,7 @@ public sealed class ExcelAutomaticPlacementService
     SheetSnapshot snapshot,
     EvidenceSide side,
     IReadOnlyList<AutomaticPlacementImage> images,
-    bool preferActiveGap = true,
+    bool preferActiveGap = false,
     double horizontalMarginPoints = 6,
     string? requestedCaseLabel = null)
   {
@@ -178,6 +180,10 @@ public sealed class ExcelAutomaticPlacementService
         $"{snapshot.WorksheetName} の{side}側へ{plans.Count}件を配置する計画を作成しました。")
       {
         LayoutSignals = snapshot.LayoutSignals,
+        CompletesCaseAfterPlacement = ExcelCaseMaintenanceService.HasManagedImage(
+          snapshot,
+          analyzed.Layout,
+          side is EvidenceSide.New ? EvidenceSide.Old : EvidenceSide.New),
       };
     }
     catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or OverflowException)
@@ -192,7 +198,7 @@ public sealed class ExcelAutomaticPlacementService
     string worksheetName,
     EvidenceSide side,
     IReadOnlyList<AutomaticPlacementImage> images,
-    bool preferActiveGap = true,
+    bool preferActiveGap = false,
     double horizontalMarginPoints = 6,
     AutomaticPlacementAnalysisResult? preparedAnalysis = null,
     string? requestedCaseLabel = null)
@@ -312,7 +318,7 @@ public sealed class ExcelAutomaticPlacementService
 
   private static string ResolveCaseLabel(SheetSnapshot snapshot, int startRow)
   {
-    var anchor = snapshot.LayoutSignals.Anchors.Last(anchor => anchor.Row <= startRow);
+    var anchor = ConfirmedAnchors(snapshot.LayoutSignals).Last(anchor => anchor.Row <= startRow);
     return FormatCaseLabel(anchor);
   }
 
@@ -325,23 +331,66 @@ public sealed class ExcelAutomaticPlacementService
       return new RequestedCaseResolution(true, snapshot.ActiveCell.Row, string.Empty);
     }
 
-    var matches = snapshot.LayoutSignals.Anchors
-      .Where(anchor => string.Equals(FormatCaseLabel(anchor), requestedCaseLabel.Trim(), StringComparison.CurrentCultureIgnoreCase))
+    var normalizedLabel = NormalizeCaseLabel(requestedCaseLabel);
+    if (normalizedLabel is null)
+    {
+      return new RequestedCaseResolution(false, 0, "CaseはX-X形式で入力してください（例: 1-2）。");
+    }
+
+    var matches = ConfirmedAnchors(snapshot.LayoutSignals)
+      .Where(anchor => string.Equals(FormatCaseLabel(anchor), normalizedLabel, StringComparison.OrdinalIgnoreCase))
       .ToArray();
     return matches.Length switch
     {
       1 => new RequestedCaseResolution(true, matches[0].Row, string.Empty),
-      0 => new RequestedCaseResolution(false, 0, $"Case '{requestedCaseLabel.Trim()}' が見つかりません。"),
-      _ => new RequestedCaseResolution(false, 0, $"Case '{requestedCaseLabel.Trim()}' が複数あるため選択できません。"),
+      0 => new RequestedCaseResolution(false, 0, $"Case '{normalizedLabel}' が見つかりません。"),
+      _ => new RequestedCaseResolution(false, 0,
+        $"Case '{normalizedLabel}' が複数あります（行: {string.Join(", ", matches.Select(anchor => anchor.Row))}）。"),
     };
   }
 
   public static string FormatCaseLabel(CaseAnchorSignal anchor)
   {
-    var values = new[] { anchor.ColumnAValue, anchor.ColumnBValue }
-      .Where(value => !string.IsNullOrWhiteSpace(value));
-    var label = string.Join("-", values);
-    return string.IsNullOrWhiteSpace(label) ? $"開始行 {anchor.Row}" : label;
+    var major = anchor.ColumnAValue?.Trim();
+    var minor = anchor.ColumnBValue?.Trim();
+    return string.IsNullOrWhiteSpace(major) || string.IsNullOrWhiteSpace(minor)
+      ? $"開始行 {anchor.Row}"
+      : $"{major}-{minor}";
+  }
+
+  public static CaseAnchorSignal[] ConfirmedAnchors(SheetLayoutSignals signals)
+  {
+    var candidates = signals.Anchors
+      .Where(anchor => anchor.HasValueInColumnA || anchor.HasValueInColumnB)
+      .OrderBy(anchor => anchor.Row)
+      .ToArray();
+    var firstRow = candidates.FirstOrDefault()?.Row ?? 0;
+    string? inheritedColumnA = null;
+    return candidates
+      .Where(anchor => anchor.Row == firstRow || anchor.HasTopBorder)
+      .Select(anchor =>
+      {
+        if (!string.IsNullOrWhiteSpace(anchor.ColumnAValue))
+        {
+          inheritedColumnA = anchor.ColumnAValue;
+        }
+
+        return string.IsNullOrWhiteSpace(anchor.ColumnAValue) && !string.IsNullOrWhiteSpace(inheritedColumnA)
+          ? anchor with { ColumnAValue = inheritedColumnA }
+          : anchor;
+      })
+      .ToArray();
+  }
+
+  internal static string? NormalizeCaseLabel(string label)
+  {
+    var normalized = label.Trim()
+      .Replace('－', '-').Replace('ー', '-').Replace('―', '-')
+      .Replace('‐', '-').Replace('‑', '-').Replace('–', '-').Replace('—', '-');
+    var parts = normalized.Split('-', StringSplitOptions.TrimEntries);
+    return parts.Length == 2 && parts.All(part => part.Length > 0)
+      ? $"{parts[0]}-{parts[1]}"
+      : null;
   }
 
   private static EvidenceSide SideForColumn(
@@ -588,6 +637,7 @@ public sealed record AutomaticPlacementAnalysisResult(
   string Message)
 {
   public SheetLayoutSignals? LayoutSignals { get; init; }
+  public bool CompletesCaseAfterPlacement { get; init; }
 
   public static AutomaticPlacementAnalysisResult Failed(string message) =>
     new(false, string.Empty, null, [], string.Empty, string.Empty, 0, EvidenceSide.New, message);

@@ -20,7 +20,21 @@ public sealed class ExcelSheetSnapshotService
     WorkbookIdentity workbook,
     string worksheetName,
     int? scopeRow = null,
-    bool includeWorksheetNames = false)
+    bool includeWorksheetNames = false) =>
+    CaptureCore(workbook, worksheetName, scopeRow, includeWorksheetNames, navigationOnly: false);
+
+  internal SheetSnapshotResult CaptureForNavigation(
+    WorkbookIdentity workbook,
+    string worksheetName,
+    bool includeWorksheetNames = false) =>
+    CaptureCore(workbook, worksheetName, scopeRow: null, includeWorksheetNames, navigationOnly: true);
+
+  private static SheetSnapshotResult CaptureCore(
+    WorkbookIdentity workbook,
+    string worksheetName,
+    int? scopeRow,
+    bool includeWorksheetNames,
+    bool navigationOnly)
   {
     ArgumentNullException.ThrowIfNull(workbook);
     ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
@@ -85,7 +99,13 @@ public sealed class ExcelSheetSnapshotService
             runningObjectTable.GetObject(monikers[0], out runningObject);
             return runningObject is null
               ? SheetSnapshotResult.Failed(worksheetName, "The selected Workbook is no longer available.")
-              : TryCaptureRunningObject(runningObject, workbook, worksheetName, scopeRow, includeWorksheetNames) ??
+              : TryCaptureRunningObject(
+                  runningObject,
+                  workbook,
+                  worksheetName,
+                  scopeRow,
+                  includeWorksheetNames,
+                  navigationOnly) ??
                 SheetSnapshotResult.Failed(worksheetName, "The selected Workbook could not be matched.");
           }
           catch (Exception exception) when (IsAutomationFailure(exception))
@@ -126,7 +146,8 @@ public sealed class ExcelSheetSnapshotService
     WorkbookIdentity identity,
     string worksheetName,
     int? scopeRow,
-    bool includeWorksheetNames)
+    bool includeWorksheetNames,
+    bool navigationOnly)
   {
     if (TryGetProperty(runningObject, "Workbooks", out var workbooks))
     {
@@ -146,7 +167,14 @@ public sealed class ExcelSheetSnapshotService
             candidate = InvokeProperty(workbooks!, "Item", index);
             if (candidate is not null && WorkbookMatches(candidate, identity))
             {
-              return CaptureWorkbook(runningObject, candidate, identity, worksheetName, scopeRow, includeWorksheetNames);
+              return CaptureWorkbook(
+                runningObject,
+                candidate,
+                identity,
+                worksheetName,
+                scopeRow,
+                includeWorksheetNames,
+                navigationOnly);
             }
           }
           finally
@@ -171,7 +199,14 @@ public sealed class ExcelSheetSnapshotService
     try
     {
       return ApplicationMatches(application, identity) && WorkbookMatches(runningObject, identity)
-        ? CaptureWorkbook(application, runningObject, identity, worksheetName, scopeRow, includeWorksheetNames)
+        ? CaptureWorkbook(
+            application,
+            runningObject,
+            identity,
+            worksheetName,
+            scopeRow,
+            includeWorksheetNames,
+            navigationOnly)
         : null;
     }
     finally
@@ -186,7 +221,8 @@ public sealed class ExcelSheetSnapshotService
     WorkbookIdentity identity,
     string worksheetName,
     int? scopeRow,
-    bool includeWorksheetNames)
+    bool includeWorksheetNames,
+    bool navigationOnly)
   {
     if (!WorkbookWindowMatchesIdentity(workbook, identity))
     {
@@ -257,10 +293,13 @@ public sealed class ExcelSheetSnapshotService
           resolvedName,
           $"シート {resolvedName} に結合セルがあるか、結合状態を確認できません。Evidenceシートでは結合セルを使用できません。");
       }
-      var comments = ReadLinkedCells(worksheet, "Comments");
-      comments.UnionWith(ReadLinkedCells(worksheet, "CommentsThreaded", optional: true));
-      var hyperlinks = ReadLinkedCells(worksheet, "Hyperlinks");
-      captureStage = "analyzing Case boundaries";
+      var comments = navigationOnly ? [] : ReadLinkedCells(worksheet, "Comments");
+      if (!navigationOnly)
+      {
+        comments.UnionWith(ReadLinkedCells(worksheet, "CommentsThreaded", optional: true));
+      }
+      var hyperlinks = navigationOnly ? [] : ReadLinkedCells(worksheet, "Hyperlinks");
+      captureStage = "reading Case anchors";
       var anchors = ReadAnchors(
         worksheet,
         values,
@@ -271,6 +310,7 @@ public sealed class ExcelSheetSnapshotService
         columnCount,
         lastColumn);
       var firstAnchorRow = anchors.Count == 0 ? Math.Max(firstRow, 1) : anchors[0].Row;
+      captureStage = "reading Old-side headers";
       var oldHeaderColumns = ReadOldHeaderColumns(
         values,
         formulas,
@@ -280,6 +320,7 @@ public sealed class ExcelSheetSnapshotService
         rowCount,
         columnCount,
         lastColumn);
+      captureStage = "reading vertical Case boundaries";
       var verticalBoundaries = ReadVerticalBoundaries(
         worksheet,
         firstAnchorRow,
@@ -289,7 +330,15 @@ public sealed class ExcelSheetSnapshotService
         anchors.Count == 0 ? activeReference.Row : anchors[^1].Row);
       var boundaryEndRows = verticalBoundaries.Select(boundary => boundary.EndRow).Distinct().ToArray();
       var candidateEndRow = boundaryEndRows.Length == 1 ? boundaryEndRows[0] : lastRow;
-      var horizontalBoundaries = ReadBottomBoundary(worksheet, candidateEndRow, lastColumn);
+      captureStage = "reading the Case bottom boundary";
+      var expectedLastEvidenceColumn = oldHeaderColumns.Count == 1
+        ? checked((oldHeaderColumns[0] * 2) - NewFirstColumn - 1)
+        : (int?)null;
+      var horizontalBoundaries = ReadBottomBoundary(
+        worksheet,
+        candidateEndRow,
+        lastColumn,
+        expectedLastEvidenceColumn);
       var observedLastColumn = horizontalBoundaries.Count == 1
         ? horizontalBoundaries[0].LastColumn
         : lastColumn;
@@ -308,22 +357,30 @@ public sealed class ExcelSheetSnapshotService
       var currentCaseFirstRow = currentAnchor?.Row ?? firstAnchorRow;
       var currentCaseLastRow = Math.Min(nextAnchor?.Row - 1 ?? logicalLastRow, logicalLastRow);
 
-      var cells = ReadOccupiedCells(
-        values,
-        formulas,
-        comments,
-        hyperlinks,
-        firstRow,
-        firstColumn,
-        rowCount,
-        columnCount,
-        currentCaseFirstRow,
-        currentCaseLastRow,
-        observedLastColumn);
+      captureStage = "reading occupied cells";
+      var cells = navigationOnly
+        ? []
+        : ReadOccupiedCells(
+          values,
+          formulas,
+          comments,
+          hyperlinks,
+          firstRow,
+          firstColumn,
+          rowCount,
+          columnCount,
+          currentCaseFirstRow,
+          currentCaseLastRow,
+          observedLastColumn);
+      captureStage = "reading worksheet Shapes";
       var shapes = ReadShapes(worksheet);
       captureStage = "reading row heights and column widths";
-      var rowHeights = ReadRowHeights(worksheet, currentCaseFirstRow, currentCaseLastRow);
-      var columnWidths = ReadColumnWidths(worksheet, NewFirstColumn, observedLastColumn);
+      var rowHeights = navigationOnly
+        ? new Dictionary<int, double>()
+        : ReadRowHeights(worksheet, currentCaseFirstRow, currentCaseLastRow);
+      var columnWidths = navigationOnly
+        ? new Dictionary<int, double>()
+        : ReadColumnWidths(worksheet, NewFirstColumn, observedLastColumn);
       var signals = new SheetLayoutSignals(
         activeReference.Row,
         lastRow,
@@ -461,6 +518,15 @@ public sealed class ExcelSheetSnapshotService
     var result = new List<VerticalBoundarySignal>();
     foreach (var column in columns.Distinct().Where(column => column >= NewFirstColumn && column < lastColumn))
     {
+      if (HasRangeBorder(worksheet, firstAnchorRow, column, lastRow, column, XlEdgeRight))
+      {
+        if (lastRow >= minimumEndRow)
+        {
+          result.Add(new VerticalBoundarySignal(column, firstAnchorRow, lastRow));
+        }
+        continue;
+      }
+
       if (!HasCellBorder(worksheet, firstAnchorRow, column, XlEdgeRight))
       {
         continue;
@@ -484,12 +550,21 @@ public sealed class ExcelSheetSnapshotService
   private static IReadOnlyList<HorizontalBoundarySignal> ReadBottomBoundary(
     object worksheet,
     int row,
-    int lastColumn)
+    int lastColumn,
+    int? expectedLastColumn)
   {
     if (row < 1 || row > ExcelWorksheetLimits.MaximumRow ||
       !HasCellBorder(worksheet, row, 1, XlEdgeBottom))
     {
       return [];
+    }
+
+    if (expectedLastColumn is >= NewFirstColumn + 1 && expectedLastColumn <= lastColumn &&
+      HasRangeBorder(worksheet, row, 1, row, expectedLastColumn.Value, XlEdgeBottom) &&
+      (expectedLastColumn == lastColumn ||
+        !HasCellBorder(worksheet, row, expectedLastColumn.Value + 1, XlEdgeBottom)))
+    {
+      return [new HorizontalBoundarySignal(row, 1, expectedLastColumn.Value)];
     }
 
     var endColumn = 1;
@@ -555,7 +630,7 @@ public sealed class ExcelSheetSnapshotService
         object? bottomRight = null;
         try
         {
-          shape = InvokeProperty(shapes, "Item", index);
+          shape = InvokeMethod(shapes, "Item", index);
           if (shape is null)
           {
             continue;
@@ -659,6 +734,43 @@ public sealed class ExcelSheetSnapshotService
     int lastColumn)
   {
     var result = new Dictionary<int, double>();
+    object? range = null;
+    object? firstCell = null;
+    object? columns = null;
+    try
+    {
+      range = GetRequiredProperty(worksheet, "Range", $"{ColumnName(firstColumn)}1:{ColumnName(lastColumn)}1");
+      columns = GetRequiredProperty(range, "EntireColumn");
+      // A one-row range can report its first column's width even when widths differ.
+      // EntireColumn reports the mixed state needed to keep exact point widths.
+      if (TryGetProperty(columns, "ColumnWidth", out var uniformWidth) &&
+        uniformWidth is not null && uniformWidth is not DBNull &&
+        Convert.ToDouble(uniformWidth, CultureInfo.InvariantCulture) > 0 &&
+        TryGetProperty(columns, "Hidden", out var hidden) && hidden is false)
+      {
+        firstCell = GetRequiredProperty(worksheet, "Cells", 1, firstColumn);
+        var width = Convert.ToDouble(GetRequiredProperty(firstCell, "Width"), CultureInfo.InvariantCulture);
+        if (double.IsFinite(width) && width > 0)
+        {
+          for (var column = firstColumn; column <= lastColumn; column++)
+          {
+            result[column] = width;
+          }
+          return result;
+        }
+      }
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      // Bulk-property failures retain the existing per-column read below.
+    }
+    finally
+    {
+      ComRelease.Release(firstCell);
+      ComRelease.Release(columns);
+      ComRelease.Release(range);
+    }
+
     for (var column = firstColumn; column <= lastColumn; column++)
     {
       object? cell = null;
@@ -734,22 +846,29 @@ public sealed class ExcelSheetSnapshotService
     int lastColumn,
     int borderIndex)
   {
-    object? firstCell = null;
-    object? lastCell = null;
     object? range = null;
     try
     {
-      firstCell = GetRequiredProperty(worksheet, "Cells", firstRow, firstColumn);
-      lastCell = GetRequiredProperty(worksheet, "Cells", lastRow, lastColumn);
-      range = GetRequiredProperty(worksheet, "Range", firstCell, lastCell);
+      range = GetRequiredProperty(worksheet, "Range",
+        $"{ColumnName(firstColumn)}{firstRow}:{ColumnName(lastColumn)}{lastRow}");
       return HasBorder(range, borderIndex);
     }
     finally
     {
       ComRelease.Release(range);
-      ComRelease.Release(lastCell);
-      ComRelease.Release(firstCell);
     }
+  }
+
+  private static string ColumnName(int column)
+  {
+    var name = string.Empty;
+    while (column > 0)
+    {
+      column--;
+      name = (char)('A' + column % 26) + name;
+      column /= 26;
+    }
+    return name;
   }
 
   private static bool HasCellBorder(object worksheet, int row, int column, int borderIndex)
@@ -768,12 +887,10 @@ public sealed class ExcelSheetSnapshotService
 
   private static bool HasBorder(object range, int borderIndex)
   {
-    object? borders = null;
     object? border = null;
     try
     {
-      borders = GetRequiredProperty(range, "Borders");
-      border = InvokeProperty(borders, "Item", borderIndex);
+      border = InvokeProperty(range, "Borders", borderIndex);
       if (border is null || !TryGetProperty(border, "LineStyle", out var lineStyle) || lineStyle is null)
       {
         return false;
@@ -785,7 +902,6 @@ public sealed class ExcelSheetSnapshotService
     finally
     {
       ComRelease.Release(border);
-      ComRelease.Release(borders);
     }
   }
 

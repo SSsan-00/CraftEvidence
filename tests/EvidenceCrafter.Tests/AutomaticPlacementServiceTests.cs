@@ -35,6 +35,72 @@ public sealed class AutomaticPlacementServiceTests
   }
 
   [TestMethod]
+  public void ConfirmedAnchors_KeepCanonicalLabelsForInheritedMajorNumber()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var signals = source with
+    {
+      Anchors =
+      [
+        new CaseAnchorSignal(3, true, true, false, "1", "1"),
+        new CaseAnchorSignal(33, false, true, true, null, "2"),
+        new CaseAnchorSignal(63, true, true, true, "2", "1"),
+        new CaseAnchorSignal(93, false, true, true, null, "2"),
+      ],
+    };
+
+    var labels = ExcelAutomaticPlacementService.ConfirmedAnchors(signals)
+      .Select(ExcelAutomaticPlacementService.FormatCaseLabel)
+      .ToArray();
+
+    CollectionAssert.AreEqual(new[] { "1-1", "1-2", "2-1", "2-2" }, labels);
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_PartialCaseLabel_IsRejected()
+  {
+    var snapshot = Snapshot(FixtureLoader.LoadLayout("default-final-case.json"));
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))],
+      requestedCaseLabel: "2");
+
+    Assert.IsFalse(result.Succeeded);
+    StringAssert.Contains(result.Message, "X-X形式");
+  }
+
+  [TestMethod]
+  public void NormalizeCaseLabel_AcceptsCommonFullWidthDash()
+  {
+    Assert.AreEqual("2-3", ExcelAutomaticPlacementService.NormalizeCaseLabel(" 2－3 "));
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_CanonicalDuplicate_FailsClosedWithRows()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var snapshot = Snapshot(source with
+    {
+      Anchors =
+      [
+        new CaseAnchorSignal(3, true, true, false, "1", "1"),
+        new CaseAnchorSignal(53, true, true, true, "1", "1"),
+      ],
+    });
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))],
+      requestedCaseLabel: "1-1");
+
+    Assert.IsFalse(result.Succeeded);
+    StringAssert.Contains(result.Message, "行: 3, 53");
+  }
+
+  [TestMethod]
   public void AnalyzeSnapshot_RequestedCaseLabel_OverridesActiveCase()
   {
     var source = FixtureLoader.LoadLayout("default-final-case.json");
@@ -83,27 +149,21 @@ public sealed class AutomaticPlacementServiceTests
   }
 
   [TestMethod]
-  public void AnalyzeSnapshot_MultipleImages_UsesGapThenStacksWithRequiredBand()
+  public void AnalyzeSnapshot_DefaultPlacement_IgnoresActiveCellGap()
   {
     var signals = FixtureLoader.LoadLayout("default-final-case.json");
     var snapshot = Snapshot(signals);
-    var images = new[]
-    {
-      new AutomaticPlacementImage("first.png", new ImageDimensions(120, 60)),
-      new AutomaticPlacementImage("second.png", new ImageDimensions(120, 60)),
-    };
 
     var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
       snapshot,
       EvidenceSide.New,
-      images);
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))]);
 
     Assert.IsTrue(result.Succeeded, result.Message);
-    Assert.HasCount(2, result.Steps);
-    Assert.AreEqual(PlacementMode.Gap, result.Steps[0].Plan.Mode);
-    Assert.AreEqual(60, result.Steps[0].Plan.StartRow);
-    Assert.AreEqual(66, result.Steps[1].Plan.StartRow);
-    Assert.AreEqual(new CellReference(66, 4), result.Steps[1].Plan.FocusCell);
+    Assert.HasCount(1, result.Steps);
+    Assert.AreEqual(PlacementMode.CaseStart, result.Steps[0].Plan.Mode);
+    Assert.AreEqual(55, result.Steps[0].Plan.StartRow);
+    Assert.AreEqual(new CellReference(55, 4), result.Steps[0].Plan.FocusCell);
     Assert.IsFalse(string.IsNullOrWhiteSpace(result.SnapshotFingerprint));
   }
 
@@ -160,6 +220,46 @@ public sealed class AutomaticPlacementServiceTests
     Assert.AreEqual("cross-side", snapshot.Shapes[1].Name);
     Assert.IsNull(spans[0].Side);
     Assert.AreEqual(62, spans[0].StartRow);
+  }
+
+  [TestMethod]
+  public void CompletedCase_RequiresManagedImageOnEachSide()
+  {
+    var signals = FixtureLoader.LoadLayout("default-final-case.json") with { ActiveRow = 3 };
+    var layout = new CaseLayoutAnalyzer().Analyze(signals).Layout!;
+    var newOnly = Snapshot(signals) with
+    {
+      Shapes =
+      [
+        new SnapshotShape("new", 5, 10, 4, 10, true),
+        new SnapshotShape("unmanaged-old", 5, 10, 19, 25, false),
+      ],
+    };
+    var bothSides = newOnly with
+    {
+      Shapes = newOnly.Shapes.Append(new SnapshotShape("old", 5, 10, 19, 25, true)).ToArray(),
+    };
+
+    Assert.IsFalse(ExcelCaseMaintenanceService.HasBothSides(newOnly, layout));
+    Assert.IsTrue(ExcelCaseMaintenanceService.HasBothSides(bothSides, layout));
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_ReportsWhetherPlacementCanCompleteCase()
+  {
+    var signals = FixtureLoader.LoadLayout("default-final-case.json") with { ActiveRow = 3 };
+    var image = new[] { new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60)) };
+    var withoutOpposite = Snapshot(signals);
+    var withOld = withoutOpposite with
+    {
+      Shapes = [new SnapshotShape("old", 5, 10, 19, 25, true)],
+    };
+
+    var incomplete = new ExcelAutomaticPlacementService().AnalyzeSnapshot(withoutOpposite, EvidenceSide.New, image);
+    var complete = new ExcelAutomaticPlacementService().AnalyzeSnapshot(withOld, EvidenceSide.New, image);
+
+    Assert.IsFalse(incomplete.CompletesCaseAfterPlacement);
+    Assert.IsTrue(complete.CompletesCaseAfterPlacement);
   }
 
   [TestMethod]

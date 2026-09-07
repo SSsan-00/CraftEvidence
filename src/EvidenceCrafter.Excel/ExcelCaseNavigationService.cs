@@ -24,15 +24,20 @@ public sealed class ExcelCaseNavigationService
     {
       return CaseNavigationResult.Failed("Case移動はSTAスレッドで実行する必要があります。");
     }
+    if (!string.IsNullOrWhiteSpace(currentCaseLabel) &&
+      ExcelAutomaticPlacementService.NormalizeCaseLabel(currentCaseLabel) is null)
+    {
+      return CaseNavigationResult.Failed("CaseはX-X形式で入力してください（例: 1-2）。");
+    }
 
-    var captured = snapshotService.Capture(workbook, worksheetName, includeWorksheetNames: true);
+    var captured = snapshotService.CaptureForNavigation(workbook, worksheetName, includeWorksheetNames: true);
     if (!captured.Succeeded || captured.Snapshot is null)
     {
       return CaseNavigationResult.Failed(captured.Message);
     }
 
     var snapshot = captured.Snapshot;
-    var anchors = ConfirmedAnchors(snapshot.LayoutSignals);
+    var anchors = ExcelAutomaticPlacementService.ConfirmedAnchors(snapshot.LayoutSignals);
     var blocks = sameCaseThenNext
       ? anchors.SelectMany(anchor => new[]
         {
@@ -51,7 +56,6 @@ public sealed class ExcelCaseNavigationService
         break;
       }
     }
-
     if (block is null)
     {
       if (direction is CaseNavigationDirection.Next)
@@ -76,11 +80,12 @@ public sealed class ExcelCaseNavigationService
     var firstColumn = block.Side is EvidenceSide.New
       ? layout.NewRegion.FirstColumn
       : layout.OldRegion.FirstColumn;
-    var target = new CellReference(layout.StartRow + 1, firstColumn + 1);
+    var target = new CellReference(layout.StartRow + 2, firstColumn + 1);
     var focused = focusService.FocusPlacedImage(workbook, snapshot.WorksheetName, target);
+    var caseLabel = ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor);
     return focused.Succeeded
-      ? new CaseNavigationResult(true, snapshot.WorksheetName, CaseLabel(block.Anchor), block.Side, target,
-        $"{snapshot.WorksheetName} / Case {CaseLabel(block.Anchor)} / {block.Side} へ移動しました。")
+      ? new CaseNavigationResult(true, snapshot.WorksheetName, caseLabel, block.Side, target,
+        $"{snapshot.WorksheetName} / Case {caseLabel} / {block.Side} へ移動しました。")
       : CaseNavigationResult.Failed(focused.Message);
   }
 
@@ -107,14 +112,14 @@ public sealed class ExcelCaseNavigationService
         continue;
       }
 
-      var captured = snapshotService.Capture(workbook, candidate.Name);
+      var captured = snapshotService.CaptureForNavigation(workbook, candidate.Name);
       if (!captured.Succeeded || captured.Snapshot is null)
       {
         continue;
       }
 
       var snapshot = captured.Snapshot;
-      var anchors = ConfirmedAnchors(snapshot.LayoutSignals);
+      var anchors = ExcelAutomaticPlacementService.ConfirmedAnchors(snapshot.LayoutSignals);
       var blocks = sameCaseThenNext
         ? anchors.SelectMany(anchor => new[] { new Block(anchor, EvidenceSide.New), new Block(anchor, EvidenceSide.Old) })
         : anchors.Select(anchor => new Block(anchor, currentSide));
@@ -132,12 +137,13 @@ public sealed class ExcelCaseNavigationService
         }
 
         var region = block.Side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
-        var target = new CellReference(layout.StartRow + 1, region.FirstColumn + 1);
+        var target = new CellReference(layout.StartRow + 2, region.FirstColumn + 1);
         var focused = focusService.FocusPlacedImage(workbook, candidate.Name, target);
         if (focused.Succeeded)
         {
-          return new CaseNavigationResult(true, candidate.Name, CaseLabel(block.Anchor), block.Side, target,
-            $"{candidate.Name} / Case {CaseLabel(block.Anchor)} / {block.Side} へ移動しました。");
+          var caseLabel = ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor);
+          return new CaseNavigationResult(true, candidate.Name, caseLabel, block.Side, target,
+            $"{candidate.Name} / Case {caseLabel} / {block.Side} へ移動しました。");
         }
       }
     }
@@ -158,9 +164,15 @@ public sealed class ExcelCaseNavigationService
     string? currentCaseLabel,
     EvidenceSide currentSide)
   {
-    var index = !string.IsNullOrWhiteSpace(currentCaseLabel)
+    var normalizedCaseLabel = string.IsNullOrWhiteSpace(currentCaseLabel)
+      ? null
+      : ExcelAutomaticPlacementService.NormalizeCaseLabel(currentCaseLabel);
+    var index = normalizedCaseLabel is not null
       ? Array.FindIndex(blocks.ToArray(), block =>
-        string.Equals(CaseLabel(block.Anchor), currentCaseLabel.Trim(), StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+          ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor),
+          normalizedCaseLabel,
+          StringComparison.OrdinalIgnoreCase) &&
         block.Side == currentSide)
       : -1;
     if (index >= 0)
@@ -185,19 +197,6 @@ public sealed class ExcelCaseNavigationService
       shape.StartColumn <= region.LastColumn && shape.EndColumn >= region.FirstColumn + 1);
   }
 
-  private static CaseAnchorSignal[] ConfirmedAnchors(SheetLayoutSignals signals)
-  {
-    var candidates = signals.Anchors
-      .Where(anchor => anchor.HasValueInColumnA || anchor.HasValueInColumnB)
-      .OrderBy(anchor => anchor.Row)
-      .ToArray();
-    var firstRow = candidates.FirstOrDefault()?.Row ?? 0;
-    return candidates.Where(anchor => anchor.Row == firstRow || anchor.HasTopBorder).ToArray();
-  }
-
-  private static string CaseLabel(CaseAnchorSignal anchor) =>
-    (anchor.ColumnBValue ?? anchor.ColumnAValue ?? anchor.Row.ToString()).Trim();
-
   private sealed record Block(CaseAnchorSignal Anchor, EvidenceSide Side);
 
   public static int? ResolveTargetRow(
@@ -205,13 +204,7 @@ public sealed class ExcelCaseNavigationService
     CaseNavigationDirection direction)
   {
     ArgumentNullException.ThrowIfNull(signals);
-    var candidates = signals.Anchors
-      .Where(anchor => anchor.HasValueInColumnA || anchor.HasValueInColumnB)
-      .OrderBy(anchor => anchor.Row)
-      .ToArray();
-    var firstAnchorRow = candidates.Length == 0 ? 0 : candidates[0].Row;
-    var confirmed = candidates
-      .Where(anchor => anchor.Row == firstAnchorRow || anchor.HasTopBorder)
+    var confirmed = ExcelAutomaticPlacementService.ConfirmedAnchors(signals)
       .Select(anchor => anchor.Row)
       .Distinct()
       .Order()

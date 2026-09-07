@@ -21,10 +21,24 @@ public sealed class PlacementPlannerTests
     var result = planner.Plan(request);
 
     Assert.AreEqual(PlacementMode.CaseStart, result.Mode);
-    Assert.AreEqual(4, result.StartRow);
-    Assert.AreEqual(5, result.EndRow);
-    Assert.AreEqual(new CellReference(4, 4), result.FocusCell);
+    Assert.AreEqual(5, result.StartRow);
+    Assert.AreEqual(6, result.EndRow);
+    Assert.AreEqual(new CellReference(5, 4), result.FocusCell);
     Assert.HasCount(0, result.Insertions);
+  }
+
+  [TestMethod]
+  public void Plan_CaseNumberAtB2_StartsImageAtD4()
+  {
+    var request = CreateRequest(contents: [], activeRow: 10) with
+    {
+      Layout = Layout with { StartRow = 2 },
+    };
+
+    var result = planner.Plan(request);
+
+    Assert.AreEqual(PlacementMode.CaseStart, result.Mode);
+    Assert.AreEqual(new CellReference(4, 4), result.FocusCell);
   }
 
   [TestMethod]
@@ -34,7 +48,7 @@ public sealed class PlacementPlannerTests
 
     var result = planner.Plan(request);
 
-    Assert.AreEqual(new CellReference(4, 19), result.FocusCell);
+    Assert.AreEqual(new CellReference(5, 19), result.FocusCell);
   }
 
   [TestMethod]
