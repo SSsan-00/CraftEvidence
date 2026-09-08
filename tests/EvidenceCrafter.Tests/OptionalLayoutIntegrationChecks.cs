@@ -39,8 +39,8 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
           _ = InvokeMethod(area, "Clear");
           // Formatting extends UsedRange to the printable width, even with no borders or values there.
           SetProperty(area, "NumberFormat", "0.00");
-          SetCellValue(worksheet, 2, 3, "新");
-          if (bothSides) SetCellValue(worksheet, 2, 18, "旧");
+          SetCellValue(worksheet, 2, 3, "任意の新側見出し");
+          if (bothSides) SetCellValue(worksheet, 2, 18, "任意の旧側見出し");
           SetCellValue(worksheet, 3, 1, 1);
           SetCellValue(worksheet, 3, 2, 1);
           SetCellValue(worksheet, 33, 2, 2);

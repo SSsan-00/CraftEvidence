@@ -311,11 +311,11 @@ public sealed class ExcelSheetSnapshotService
         columnCount,
         lastColumn));
       var firstAnchorRow = anchors.Count == 0 ? Math.Max(firstRow, 1) : anchors[0].Row;
-      captureStage = "reading New/Old headers";
-      var newHeaderColumns = ReadHeaderColumns(
-        values, firstAnchorRow - 1, firstRow, firstColumn, rowCount, columnCount, lastColumn, "新", "New");
-      var oldHeaderColumns = ReadHeaderColumns(
-        values, firstAnchorRow - 1, firstRow, firstColumn, rowCount, columnCount, lastColumn, "旧", "Old");
+      captureStage = "reading ordered Side headers";
+      var sideHeaderColumns = ReadHeaderColumns(
+        values, firstAnchorRow - 1, firstRow, firstColumn, rowCount, columnCount, lastColumn);
+      var newHeaderColumns = sideHeaderColumns.Take(1).ToArray();
+      var oldHeaderColumns = sideHeaderColumns.Skip(1).ToArray();
       captureStage = "reading vertical Case boundaries";
       var verticalBoundaries = ReadVerticalBoundaries(
         worksheet,
@@ -325,7 +325,7 @@ public sealed class ExcelSheetSnapshotService
         oldHeaderColumns,
         anchors.Count == 0 ? activeReference.Row : anchors[^1].Row);
       captureStage = "reading the Case bottom boundary";
-      var expectedLastEvidenceColumn = oldHeaderColumns.Count == 1
+      var expectedLastEvidenceColumn = oldHeaderColumns.Length == 1
         ? checked((oldHeaderColumns[0] * 2) - NewFirstColumn - 1)
         : (int?)null;
       var horizontalBoundaries = ReadBottomBoundary(
@@ -465,9 +465,7 @@ public sealed class ExcelSheetSnapshotService
     int firstColumn,
     int rowCount,
     int columnCount,
-    int lastColumn,
-    string japaneseLabel,
-    string englishLabel)
+    int lastColumn)
   {
     if (headerRow < firstRow || headerRow >= firstRow + rowCount)
     {
@@ -478,8 +476,7 @@ public sealed class ExcelSheetSnapshotService
     for (var column = NewFirstColumn; column <= lastColumn; column++)
     {
       var label = DisplayValue(MatrixValue(values, headerRow, column, firstRow, firstColumn, rowCount, columnCount))?.Trim();
-      if (string.Equals(label, japaneseLabel, StringComparison.Ordinal) ||
-        string.Equals(label, englishLabel, StringComparison.OrdinalIgnoreCase))
+      if (!string.IsNullOrWhiteSpace(label))
       {
         result.Add(column);
       }
