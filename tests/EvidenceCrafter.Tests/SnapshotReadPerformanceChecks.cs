@@ -30,26 +30,15 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
         boundaries = (IReadOnlyList<VerticalBoundarySignal>)verticalReader.Invoke(
           null, [worksheet, 3, 1500, 32, new[] { 18 }, 1100])!;
         if (iteration > 0) timings.Add(timer.Elapsed.TotalMilliseconds);
-        CollectionAssert.AreEqual(new[] { new VerticalBoundarySignal(17, 3, 1202) }, boundaries.ToArray());
+        Assert.IsEmpty(boundaries, "Partial borders are decorative and must not trigger a row-by-row scan.");
       }
       timings.Sort();
       Console.WriteLine($"Snapshot vertical boundary, 1200 bordered rows + trailing blank rows: median {timings[1]:F2} ms (3 warmed runs)");
 
-      // A gap followed by more borders must stop at the FIRST gap, not the last border.
-      SetRangeProperty(worksheet, "Q601", "Value2", "gap probe");
-      object? gap = null;
-      try
-      {
-        gap = GetRequiredProperty(worksheet, "Range", "Q601");
-        _ = InvokeMethod(gap, "ClearFormats");
-      }
-      finally { Release(gap); }
-      var interrupted = (IReadOnlyList<VerticalBoundarySignal>)verticalReader.Invoke(
-        null, [worksheet, 3, 1500, 32, new[] { 18 }, 3])!;
-      CollectionAssert.AreEqual(new[] { new VerticalBoundarySignal(17, 3, 600) }, interrupted.ToArray());
-      var rejected = (IReadOnlyList<VerticalBoundarySignal>)verticalReader.Invoke(
+      SetRangeBorder(worksheet, 3, 17, 1500, 17, 10);
+      var continuous = (IReadOnlyList<VerticalBoundarySignal>)verticalReader.Invoke(
         null, [worksheet, 3, 1500, 32, new[] { 18 }, 1100])!;
-      Assert.IsEmpty(rejected, "A border ending before the last Case must remain rejected.");
+      CollectionAssert.AreEqual(new[] { new VerticalBoundarySignal(17, 3, 1500) }, continuous.ToArray());
 
       SetRangeProperty(worksheet, "C:AF", "ColumnWidth", 8.5);
       for (var scenario = 0; scenario < 5; scenario++)

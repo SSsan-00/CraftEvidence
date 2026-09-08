@@ -36,7 +36,11 @@ public sealed class ExcelManagedReplacementLayoutService
     }
 
     var layout = analyzed.Layout;
-    var columns = target.Metadata.Side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
+    if (!layout.SupportsSide(target.Metadata.Side))
+    {
+      return ReplacementLayoutResult.Failed("対象画像のSideは現在のシート構成では利用できません。");
+    }
+    var columns = layout.RegionFor(target.Metadata.Side);
     var width = Enumerable.Range(columns.FirstColumn, columns.Count)
       .Sum(column => snapshot.ColumnWidths.GetValueOrDefault(column)) - (horizontalMarginPoints * 2);
     var left = Enumerable.Range(1, columns.FirstColumn - 1)

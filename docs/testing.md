@@ -26,8 +26,8 @@ Officeを起動するテストには `[TestCategory("ExcelIntegration")]` を付
 
 - Case Anchorの選択
 - 次AnchorからのCase終端
-- 最終Caseの境界信号一致/不一致
-- 動的New/Old境界
+- 最終CaseのUsedRange終端と自動行削除停止
+- ヘッダーによるNewのみ／New・Old境界、罫線あり／なしの同一配置結果
 - 画像の縮小と非拡大
 - 画面pixelの96 DPI論理サイズ換算
 - 2行非画像帯と4行末尾余白
@@ -38,6 +38,7 @@ Officeを起動するテストには `[TestCategory("ExcelIntegration")]` を付
 - Workbook close/reopenの接続世代とExcelイベント復元
 - 明示的な行挿入と、live safety snapshotによるCase末尾行削除
 - 個別Evidence実例の30行Case、C:Q／R:AF境界、書式末尾を含むUsedRange
+- ROT内のIDispatch非対応COMオブジェクトの読み飛ばしと探索継続
 
 ## 完了条件
 

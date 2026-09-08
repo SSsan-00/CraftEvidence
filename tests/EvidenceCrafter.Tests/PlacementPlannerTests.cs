@@ -207,6 +207,14 @@ public sealed class PlacementPlannerTests
     Assert.ThrowsExactly<ArgumentException>(() => planner.Plan(request));
   }
 
+  [TestMethod]
+  public void Plan_NewOnly_PreservesInsetAndRejectsOld()
+  {
+    var request = CreateRequest([]) with { Layout = Layout with { OldRegion = null } };
+    Assert.AreEqual(new CellReference(5, 4), planner.Plan(request).FocusCell);
+    Assert.ThrowsExactly<InvalidOperationException>(() => planner.Plan(request with { Side = EvidenceSide.Old }));
+  }
+
   private static PlacementRequest CreateRequest(
     IReadOnlyList<ContentSpan> contents,
     ImageDimensions? image = null,

@@ -16,7 +16,7 @@ Push-Location $projectRoot
 try {
     $sdkVersion = (& dotnet --version).Trim()
     if (-not $sdkVersion.StartsWith('9.')) {
-        throw "EvidenceCrafter requires .NET 9 SDK. Detected: $sdkVersion"
+        throw "EvidenceCrafter requires .NET 9 SDK 9.0.304 or a compatible newer .NET 9 SDK. Detected: $sdkVersion"
     }
 
     dotnet restore $solutionPath

@@ -51,6 +51,12 @@ public sealed class ExcelCaseMaintenanceService
         $"Case末尾を安全に解析できないため行整理を行いません: {string.Join(" ", analyzed.Reasons)}");
     }
 
+    if (!analyzed.Layout.CanDeleteTrailingRows || analyzed.Layout.Kind == SideLayoutKind.NewOnly)
+    {
+      return RowMutationResult.NoChange(RowMutationOperation.Delete, captured.Snapshot.WorksheetName,
+        "NewのみのCase、または最終Caseのため自動行整理は行いません。");
+    }
+
     if (requireBothSides && !HasBothSides(captured.Snapshot, analyzed.Layout))
     {
       return RowMutationResult.NoChange(
@@ -76,7 +82,8 @@ public sealed class ExcelCaseMaintenanceService
     EvidenceCaseLayout layout,
     EvidenceSide side)
   {
-    var region = side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
+    if (!layout.SupportsSide(side)) return false;
+    var region = layout.RegionFor(side);
     return snapshot.Shapes.Any(shape =>
       shape.IsManagedImage &&
       shape.StartRow <= layout.EndRow &&

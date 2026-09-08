@@ -77,7 +77,7 @@ public sealed class CaseLayoutAnalyzerTests
   }
 
   [TestMethod]
-  public void Analyze_FinalCaseWithConflictingEndSignals_IsUnsafe()
+  public void Analyze_FinalCaseWithConflictingEndSignals_WarnsAndUsesLogicalEnd()
   {
     var signals = FixtureLoader.LoadLayout("default-final-case.json") with
     {
@@ -86,13 +86,14 @@ public sealed class CaseLayoutAnalyzerTests
 
     var result = analyzer.Analyze(signals);
 
-    Assert.IsFalse(result.IsSafe);
-    Assert.AreEqual(LayoutConfidence.Unsafe, result.Confidence);
+    Assert.IsTrue(result.IsSafe);
+    Assert.AreEqual(102, result.Layout!.EndRow);
+    Assert.IsFalse(result.Layout.CanDeleteTrailingRows);
     StringAssert.Contains(string.Join(' ', result.Reasons), "disagree");
   }
 
   [TestMethod]
-  public void Analyze_ConflictingHeaderAndVerticalBoundary_IsUnsafe()
+  public void Analyze_ConflictingHeaderAndVerticalBoundary_UsesHeaderAndWarns()
   {
     var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with
     {
@@ -101,7 +102,8 @@ public sealed class CaseLayoutAnalyzerTests
 
     var result = analyzer.Analyze(signals);
 
-    Assert.IsFalse(result.IsSafe);
+    Assert.IsTrue(result.IsSafe);
+    Assert.AreEqual(new ColumnRange(3, 17), result.Layout!.NewRegion);
     StringAssert.Contains(string.Join(' ', result.Reasons), "disagree");
   }
 
@@ -120,7 +122,7 @@ public sealed class CaseLayoutAnalyzerTests
   }
 
   [TestMethod]
-  public void Analyze_HeaderOnlyBoundary_IsUnsafe()
+  public void Analyze_HeaderOnlyBoundary_IsSafe()
   {
     var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with
     {
@@ -129,29 +131,29 @@ public sealed class CaseLayoutAnalyzerTests
 
     var result = analyzer.Analyze(signals);
 
-    Assert.IsFalse(result.IsSafe);
-    Assert.AreEqual(LayoutConfidence.Unsafe, result.Confidence);
-    StringAssert.Contains(string.Join(' ', result.Reasons), "not an independent structural signal");
+    Assert.IsTrue(result.IsSafe);
+    Assert.AreEqual(new ColumnRange(3, 12), result.Layout!.NewRegion);
   }
 
   [TestMethod]
-  public void Analyze_UnconfirmedNonFirstAnchor_IsUnsafe()
+  public void Analyze_UnborderedNonFirstAnchor_IsSafe()
   {
     var signals = FixtureLoader.LoadLayout("default-final-case.json") with
     {
       Anchors =
       [
-        new CaseAnchorSignal(3, true, true, false),
-        new CaseAnchorSignal(20, false, true, false),
-        new CaseAnchorSignal(53, false, true, true),
+        new CaseAnchorSignal(3, true, true, false, "1", "1"),
+        new CaseAnchorSignal(20, false, true, false, null, "2"),
+        new CaseAnchorSignal(53, false, true, true, null, "3"),
       ],
       ActiveRow = 25,
     };
 
     var result = analyzer.Analyze(signals);
 
-    Assert.IsFalse(result.IsSafe);
-    StringAssert.Contains(string.Join(' ', result.Reasons), "not confirmed");
+    Assert.IsTrue(result.IsSafe);
+    Assert.AreEqual(20, result.Layout!.StartRow);
+    Assert.AreEqual(52, result.Layout.EndRow);
   }
 
   [TestMethod]
@@ -173,7 +175,7 @@ public sealed class CaseLayoutAnalyzerTests
   }
 
   [TestMethod]
-  public void Analyze_FinalCaseEndDisagreesWithLogicalEvidenceEnd_IsUnsafe()
+  public void Analyze_FinalCaseEndDisagreesWithLogicalEvidenceEnd_UsesLogicalEnd()
   {
     var signals = FixtureLoader.LoadLayout("default-final-case.json") with
     {
@@ -182,12 +184,13 @@ public sealed class CaseLayoutAnalyzerTests
 
     var result = analyzer.Analyze(signals);
 
-    Assert.IsFalse(result.IsSafe);
-    StringAssert.Contains(string.Join(' ', result.Reasons), "disagrees with logical Evidence");
+    Assert.IsTrue(result.IsSafe);
+    Assert.AreEqual(101, result.Layout!.EndRow);
+    Assert.IsFalse(result.Layout.CanDeleteTrailingRows);
   }
 
   [TestMethod]
-  public void Analyze_ObservedAndHorizontalRightEdgesDisagree_IsUnsafe()
+  public void Analyze_ObservedAndHorizontalRightEdgesDisagree_UsesObservedWidthAndWarns()
   {
     var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with
     {
@@ -197,8 +200,9 @@ public sealed class CaseLayoutAnalyzerTests
 
     var result = analyzer.Analyze(signals);
 
-    Assert.IsFalse(result.IsSafe);
-    StringAssert.Contains(string.Join(' ', result.Reasons), "right edges disagree");
+    Assert.IsTrue(result.IsSafe);
+    Assert.AreEqual(24, result.Layout!.LastEvidenceColumn);
+    StringAssert.Contains(string.Join(' ', result.Reasons), "disagree");
   }
 
   [TestMethod]
@@ -248,6 +252,59 @@ public sealed class CaseLayoutAnalyzerTests
     var result = analyzer.Analyze(signals);
 
     Assert.IsFalse(result.IsSafe);
-    StringAssert.Contains(string.Join(' ', result.Reasons), "right edges conflict");
+    StringAssert.Contains(string.Join(' ', result.Reasons), "right edge cannot be determined");
+  }
+
+  [TestMethod]
+  public void Analyze_BordersDoNotChangeLayoutOrPlacement()
+  {
+    var bordered = FixtureLoader.LoadLayout("dynamic-both-layout.json");
+    var borderless = bordered with { VerticalBoundaries = [], HorizontalBoundaries = [] };
+    Assert.AreEqual(analyzer.Analyze(bordered).Layout, analyzer.Analyze(borderless).Layout);
+    Assert.IsFalse(analyzer.Analyze(borderless).Reasons.Any(reason => reason.StartsWith("Warning:")));
+  }
+
+  [TestMethod]
+  public void Analyze_NewOnly_UsesFullWidthAndRejectsOld()
+  {
+    var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with
+    {
+      OldHeaderColumns = [], VerticalBoundaries = [], HorizontalBoundaries = [], ActiveRow = 45,
+    };
+    var result = analyzer.Analyze(signals);
+    Assert.IsTrue(result.IsSafe, string.Join(' ', result.Reasons));
+    Assert.AreEqual(SideLayoutKind.NewOnly, result.Layout!.Kind);
+    Assert.AreEqual(new ColumnRange(3, 22), result.Layout.NewRegion);
+    Assert.IsNull(result.Layout.OldRegion);
+    Assert.IsFalse(result.Layout.SupportsSide(EvidenceSide.Old));
+    Assert.ThrowsExactly<InvalidOperationException>(() => result.Layout.RegionFor(EvidenceSide.Old));
+    Assert.AreEqual(84, result.Layout.EndRow);
+    Assert.IsFalse(result.Layout.CanDeleteTrailingRows);
+  }
+
+  [TestMethod]
+  public void Analyze_NoNewHeader_IsUnsafeEvenWithBorders()
+  {
+    var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with { NewHeaderColumns = [] };
+    Assert.IsFalse(analyzer.Analyze(signals).IsSafe);
+  }
+
+  [TestMethod]
+  public void Analyze_SingleColumnSide_IsUnsafe()
+  {
+    var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with { OldHeaderColumns = [4] };
+    Assert.IsFalse(analyzer.Analyze(signals).IsSafe);
+  }
+
+  [TestMethod]
+  public void Analyze_DuplicateCaseNumber_ReportsAllRows()
+  {
+    var signals = FixtureLoader.LoadLayout("dynamic-both-layout.json") with
+    {
+      Anchors = [new(5, true, true, false, "1", "1"), new(45, false, true, false, null, "1")],
+    };
+    var result = analyzer.Analyze(signals);
+    Assert.IsFalse(result.IsSafe);
+    StringAssert.Contains(string.Join(' ', result.Reasons), "Case '1-1' is duplicated at rows 5, 45");
   }
 }

@@ -26,7 +26,7 @@ public sealed class ContentOccupancyAnalyzer
           shape.EndRow >= layout.StartRow &&
           shape.StartRow <= layout.EndRow &&
           shape.EndColumn >= layout.NewRegion.FirstColumn &&
-          shape.StartColumn <= layout.OldRegion.LastColumn)
+          shape.StartColumn <= layout.LastEvidenceColumn)
         .Select(shape => new ContentSpan(
           ResolveSide(shape.StartColumn, shape.EndColumn, layout),
           Math.Max(shape.StartRow, layout.StartRow),
@@ -47,7 +47,7 @@ public sealed class ContentOccupancyAnalyzer
       return EvidenceSide.New;
     }
 
-    if (firstColumn >= layout.OldRegion.FirstColumn && lastColumn <= layout.OldRegion.LastColumn)
+    if (layout.OldRegion is { } old && firstColumn >= old.FirstColumn && lastColumn <= old.LastColumn)
     {
       return EvidenceSide.Old;
     }

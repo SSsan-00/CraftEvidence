@@ -32,6 +32,7 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
       Marshal.ThrowExceptionForHR(NativeMethods.CreateBindCtx(0, out bindContext));
 
       var discovered = new Dictionary<string, DiscoveredWorkbook>(StringComparer.OrdinalIgnoreCase);
+      var unsupportedObjectCount = 0;
       var monikers = new IMoniker[1];
       while (monikerEnumerator.Next(1, monikers, IntPtr.Zero) == 0)
       {
@@ -41,13 +42,19 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
           runningObjectTable.GetObject(monikers[0], out runningObject);
           if (runningObject is not null)
           {
+            if (!SupportsDispatch(runningObject))
+            {
+              unsupportedObjectCount++;
+              continue;
+            }
+
             var registrationDisplayName = GetRegistrationDisplayName(monikers[0], bindContext);
             InspectRunningObject(runningObject, registrationDisplayName, discovered, warnings);
           }
         }
         catch (Exception exception) when (IsAutomationFailure(exception))
         {
-          warnings.Add($"A running object disconnected during Excel discovery (0x{GetAutomationHResult(exception):X8}).");
+          warnings.Add(DescribeDiscoveryFailure(exception));
         }
         finally
         {
@@ -55,6 +62,11 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
           ComRelease.Release(monikers[0]);
           monikers[0] = null!;
         }
+      }
+
+      if (unsupportedObjectCount > 0)
+      {
+        warnings.Add($"IDispatch 非対応の対象外 COM オブジェクトを {unsupportedObjectCount} 件スキップしました。Excel ブックの探索は継続しました。");
       }
 
       var workbooks = discovered.Values
@@ -65,9 +77,9 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
         .ToArray();
       return new ExcelDiscoveryResult(workbooks, warnings);
     }
-    catch (COMException exception)
+    catch (Exception exception) when (IsAutomationFailure(exception))
     {
-      warnings.Add($"Excel Running Object Table access failed (0x{exception.HResult:X8}).");
+      warnings.Add($"Excel Running Object Table access failed. {DescribeDiscoveryFailure(exception)}");
       return new ExcelDiscoveryResult([], warnings);
     }
     finally
@@ -76,6 +88,40 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
       ComRelease.Release(monikerEnumerator);
       ComRelease.Release(runningObjectTable);
     }
+  }
+
+  internal static bool SupportsDispatch(object target)
+  {
+    nint dispatch = IntPtr.Zero;
+    try
+    {
+      dispatch = Marshal.GetIDispatchForObject(target);
+      return true;
+    }
+    catch (Exception exception) when (exception is InvalidCastException or NotSupportedException)
+    {
+      return false;
+    }
+    catch (COMException exception) when (exception.HResult == unchecked((int)0x80004002))
+    {
+      return false;
+    }
+    finally
+    {
+      if (dispatch != IntPtr.Zero)
+      {
+        _ = Marshal.Release(dispatch);
+      }
+    }
+  }
+
+  internal static string DescribeDiscoveryFailure(Exception exception)
+  {
+    var hresult = GetAutomationHResult(exception);
+    var guidance = hresult == unchecked((int)0x80070005)
+      ? " アクセスが拒否されました。Excel と EvidenceCrafter を同じユーザー・権限レベルで起動しているか確認してください。"
+      : string.Empty;
+    return $"Excel 探索中のオブジェクトをスキップしました (0x{hresult:X8})。{guidance}";
   }
 
   private static void InspectRunningObject(
@@ -308,7 +354,7 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
       value = InvokeProperty(target, propertyName);
       return true;
     }
-    catch (Exception exception) when (IsAutomationFailure(exception))
+    catch (Exception exception) when (IsMissingProperty(exception))
     {
       value = null;
       return false;
@@ -325,7 +371,12 @@ public sealed class ExcelSessionCatalog : IExcelSessionCatalog
       CultureInfo.CurrentCulture);
 
   private static bool IsAutomationFailure(Exception exception) =>
-    exception is COMException or TargetInvocationException or MissingMemberException or InvalidOperationException;
+    exception is COMException or TargetInvocationException or MissingMemberException or InvalidOperationException or
+      NotSupportedException or InvalidCastException or InvalidComObjectException or UnauthorizedAccessException;
+
+  private static bool IsMissingProperty(Exception exception) =>
+    exception is MissingMemberException ||
+    GetAutomationHResult(exception) is unchecked((int)0x80020003) or unchecked((int)0x80020006);
 
   private static int GetAutomationHResult(Exception exception) =>
     exception is TargetInvocationException { InnerException: not null } invocationException

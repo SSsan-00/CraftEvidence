@@ -37,6 +37,7 @@ public sealed class MainForm : Form
   private readonly Button deleteImageButton = new();
   private readonly RadioButton newSideButton = new();
   private readonly RadioButton oldSideButton = new();
+  private readonly ToolTip sideToolTip = new();
   private readonly Button previousCaseButton = new();
   private readonly Button nextCaseButton = new();
   private readonly Label statusLabel = new();
@@ -247,6 +248,7 @@ public sealed class MainForm : Form
     worksheetNameBox.Margin = new Padding(0, 0, 0, 6);
     worksheetNameBox.PlaceholderText = "シート名";
     worksheetNameBox.TextChanged += (_, _) => MarkPlacementTargetOverridden();
+    worksheetNameBox.Validated += async (_, _) => await RefreshManualSideLayoutAsync();
     targetCard.Controls.Add(worksheetNameBox, 1, 0);
     targetCard.SetColumnSpan(worksheetNameBox, 3);
 
@@ -291,6 +293,7 @@ public sealed class MainForm : Form
     caseLabelBox.Width = 86;
     StyleTextBox(caseLabelBox);
     caseLabelBox.PlaceholderText = "自動";
+    caseLabelBox.Validated += async (_, _) => await RefreshManualSideLayoutAsync();
     caseLabelBox.TextChanged += (_, _) =>
     {
       if (!updatingPlacementContext)
@@ -516,7 +519,44 @@ public sealed class MainForm : Form
   private void SetPlacementContext(AutomaticPlacementAnalysisResult analysis)
   {
     cachedPlacementContext = analysis;
+    ApplySideLayout(analysis.LayoutAnalysis!.Layout!.Kind);
     SetPlacementContext(analysis.WorksheetName, analysis.CaseLabel, analysis.ResolvedSide, overridden: false);
+  }
+
+  private void ApplySideLayout(SideLayoutKind kind)
+  {
+    var wasUpdating = updatingPlacementContext;
+    updatingPlacementContext = true;
+    try
+    {
+      oldSideButton.Enabled = kind == SideLayoutKind.Both;
+      sideToolTip.SetToolTip(oldSideButton, oldSideButton.Enabled ? "旧側に配置" : "このシートはNewのみ");
+      if (!oldSideButton.Enabled) newSideButton.Checked = true;
+    }
+    finally { updatingPlacementContext = wasUpdating; }
+  }
+
+  private async Task RefreshManualSideLayoutAsync()
+  {
+    if (updatingPlacementContext || !placementTargetOverridden ||
+      workbookSelector.SelectedItem is not WorkbookIdentity workbook ||
+      string.IsNullOrWhiteSpace(worksheetNameBox.Text) || Volatile.Read(ref mutationInProgress) != 0) return;
+    var version = Interlocked.Increment(ref placementContextRequestVersion);
+    var sheet = worksheetNameBox.Text.Trim();
+    var label = RequestedCaseLabel;
+    var captured = await StaTask.Run(() => new ExcelSheetSnapshotService().Capture(workbook, sheet));
+    if (!CanUpdateUi || version != Volatile.Read(ref placementContextRequestVersion)) return;
+    if (captured.Snapshot is not { } snapshot) { SetStatus(captured.Message); return; }
+    var row = string.IsNullOrWhiteSpace(label) ? snapshot.ActiveCell.Row :
+      ExcelAutomaticPlacementService.ConfirmedAnchors(snapshot.LayoutSignals)
+        .FirstOrDefault(anchor => ExcelAutomaticPlacementService.FormatCaseLabel(anchor) == CaseAnchorNormalizer.NormalizeCaseLabel(label))?.Row ?? 0;
+    var layout = placementContextLayoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = row });
+    if (layout.Layout is { } resolved)
+    {
+      ApplySideLayout(resolved.Kind);
+      SetStatus($"{sheet} / Case {label} / {SelectedSide}  構成: {(resolved.Kind == SideLayoutKind.NewOnly ? "Newのみ" : "New/Old")}");
+    }
+    else SetStatus(string.Join(" ", layout.Reasons));
   }
 
   private void SetPlacementContext(
@@ -602,8 +642,9 @@ public sealed class MainForm : Form
       return false;
     }
 
-    var side = selection.Column >= analyzed.Layout.OldRegion.FirstColumn &&
-      selection.Column <= analyzed.Layout.OldRegion.LastColumn
+    ApplySideLayout(analyzed.Layout.Kind);
+    var side = analyzed.Layout.OldRegion is { } old && selection.Column >= old.FirstColumn &&
+      selection.Column <= old.LastColumn
         ? EvidenceSide.Old
         : selection.Column >= analyzed.Layout.NewRegion.FirstColumn &&
           selection.Column <= analyzed.Layout.NewRegion.LastColumn
@@ -708,7 +749,7 @@ public sealed class MainForm : Form
       var warningCount = result.Warnings.Count + monitorWarnings.Count;
       if (warningCount > 0)
       {
-        statusLabel.Text += $" 警告: {warningCount}件";
+        statusLabel.Text += $" 警告: {warningCount}件 / {result.Warnings.Concat(monitorWarnings).First()}";
       }
 
       if (clipboardWarning is not null)
@@ -1125,7 +1166,8 @@ public sealed class MainForm : Form
         [new HistoryImage(stream.ToArray(), dimensions)],
         result.AppliedInsertions,
         result.PlacedImages,
-        cleanupSnapshot);
+        cleanupSnapshot,
+        result.Analysis!.LayoutAnalysis!.Layout!);
 
       WriteDiagnostic(
         DiagnosticEventKind.MutationResult,
@@ -1348,6 +1390,8 @@ public sealed class MainForm : Form
       return;
     }
 
+    ApplySideLayout(result.LayoutKind);
+    cachedPlacementContext = null;
     updatingPlacementContext = true;
     try
     {
@@ -1799,7 +1843,8 @@ public sealed class MainForm : Form
     IReadOnlyList<HistoryImage> historyImages,
     IReadOnlyList<AppliedRowInsertion> insertions,
     IReadOnlyList<AutomaticPlacedImage> images,
-    RowDeletionSnapshot? cleanupSnapshot)
+    RowDeletionSnapshot? cleanupSnapshot,
+    EvidenceCaseLayout expectedLayout)
   {
     if (historyImages.Count != images.Count)
     {
@@ -1808,6 +1853,18 @@ public sealed class MainForm : Form
 
     var targets = images.Select(image => image.Target).ToArray();
     var horizontalMarginPoints = settings.HorizontalMarginPoints;
+
+    async Task<bool> ValidateHistoryLayoutAsync()
+    {
+      var captured = await StaTask.Run(() => new ExcelSheetSnapshotService().Capture(workbook, images[0].WorksheetName));
+      var current = captured.Snapshot is { } snapshot
+        ? placementContextLayoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = images[0].FocusCell.Row }).Layout
+        : null;
+      if (current is not null && current.Kind == expectedLayout.Kind &&
+        current.NewRegion == expectedLayout.NewRegion && current.OldRegion == expectedLayout.OldRegion) return true;
+      SetStatus("画像配置時からシート構成が変わったか確認できないため、Undo/Redoを停止しました。");
+      return false;
+    }
 
     async Task<bool> PlaceAtAsync(int index)
     {
@@ -1846,6 +1903,7 @@ public sealed class MainForm : Form
       "自動配置",
       async () =>
       {
+        if (!await ValidateHistoryLayoutAsync()) return false;
         if (cleanupSnapshot is not null &&
           !await RunRowHistoryOperationAsync(() => rowMutationService.RestoreDeletedRows(workbook, cleanupSnapshot)))
         {
@@ -1906,6 +1964,7 @@ public sealed class MainForm : Form
       },
       async () =>
       {
+        if (!await ValidateHistoryLayoutAsync()) return false;
         var inserted = new List<AppliedRowInsertion>();
         var placedIndexes = new List<int>();
         foreach (var insertion in insertions)

@@ -18,7 +18,16 @@ internal static class FixtureLoader
     using var stream = assembly.GetManifestResourceStream(resourceName) ??
       throw new InvalidOperationException($"Missing embedded fixture: {resourceName}");
 
-    return JsonSerializer.Deserialize<SheetLayoutSignals>(stream, Options) ??
+    var loaded = JsonSerializer.Deserialize<SheetLayoutSignals>(stream, Options) ??
       throw new InvalidOperationException($"Invalid fixture: {resourceName}");
+    var major = 0;
+    var minor = 0;
+    var anchors = loaded.Anchors.Select(anchor =>
+    {
+      if (anchor.HasValueInColumnA) { major++; minor = 1; }
+      else minor++;
+      return anchor with { ColumnAValue = major.ToString(), ColumnBValue = minor.ToString() };
+    }).ToArray();
+    return loaded with { Anchors = anchors, NewHeaderColumns = [loaded.NewFirstColumn] };
   }
 }

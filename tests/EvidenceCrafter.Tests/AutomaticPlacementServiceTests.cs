@@ -269,7 +269,7 @@ public sealed class AutomaticPlacementServiceTests
     var signals = source with
     {
       ActiveRow = 60,
-      Anchors = source.Anchors.Append(new CaseAnchorSignal(103, false, true, true)).ToArray(),
+      Anchors = source.Anchors.Append(new CaseAnchorSignal(103, false, true, true, null, "3")).ToArray(),
     };
 
     var previous = ExcelCaseNavigationService.ResolveTargetRow(signals, CaseNavigationDirection.Previous);

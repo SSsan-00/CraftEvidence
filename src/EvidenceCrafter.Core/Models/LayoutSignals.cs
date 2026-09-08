@@ -30,4 +30,7 @@ public sealed record SheetLayoutSignals(
   IReadOnlyList<CaseAnchorSignal> Anchors,
   IReadOnlyList<VerticalBoundarySignal> VerticalBoundaries,
   IReadOnlyList<HorizontalBoundarySignal> HorizontalBoundaries,
-  IReadOnlyList<int> OldHeaderColumns);
+  IReadOnlyList<int> OldHeaderColumns)
+{
+  public IReadOnlyList<int> NewHeaderColumns { get; init; } = [];
+}

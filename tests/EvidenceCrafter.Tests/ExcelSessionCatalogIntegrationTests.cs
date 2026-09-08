@@ -420,8 +420,12 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
         Convert.FromBase64String(
            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
 
-      SetCellValue(worksheet, 3, 1, "automatic");
-      SetCellValue(worksheet, 3, 2, "case");
+      VerifyOptionalLayoutScenarios(worksheet, identity, placementImagePath);
+
+      SetCellValue(worksheet, 2, 3, "新");
+      SetCellValue(worksheet, 2, 6, "旧");
+      SetCellValue(worksheet, 3, 1, 1);
+      SetCellValue(worksheet, 3, 2, 1);
       SetRangeBorder(worksheet, 3, 1, 3, 8, 8);
       SetRangeBorder(worksheet, 1, 5, 8, 5, 10);
       SetRangeBorder(worksheet, 8, 1, 8, 8, 9);
@@ -514,7 +518,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
           EvidenceSide.New,
           sameCaseThenNext: true));
         Assert.IsTrue(oppositeSide.Succeeded, oppositeSide.Message);
-        Assert.AreEqual("automatic-case", oppositeSide.CaseLabel);
+        Assert.AreEqual("1-1", oppositeSide.CaseLabel);
         Assert.AreEqual(EvidenceSide.Old, oppositeSide.Side);
         Assert.AreEqual(5, oppositeSide.Target.Row);
 

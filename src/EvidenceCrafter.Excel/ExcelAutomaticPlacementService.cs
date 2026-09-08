@@ -153,7 +153,7 @@ public sealed class ExcelAutomaticPlacementService
       var plans = new List<AutomaticPlacementStep>(images.Count);
       for (var index = 0; index < images.Count; index++)
       {
-        var sideColumns = side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
+        var sideColumns = layout.RegionFor(side);
         var width = AvailableWidth(snapshot, sideColumns, horizontalMarginPoints);
         var plan = placementPlanner.Plan(new PlacementRequest(
           layout,
@@ -180,7 +180,8 @@ public sealed class ExcelAutomaticPlacementService
         $"{snapshot.WorksheetName} の{side}側へ{plans.Count}件を配置する計画を作成しました。")
       {
         LayoutSignals = snapshot.LayoutSignals,
-        CompletesCaseAfterPlacement = ExcelCaseMaintenanceService.HasManagedImage(
+        CompletesCaseAfterPlacement = analyzed.Layout.Kind == SideLayoutKind.Both &&
+          analyzed.Layout.CanDeleteTrailingRows && ExcelCaseMaintenanceService.HasManagedImage(
           snapshot,
           analyzed.Layout,
           side is EvidenceSide.New ? EvidenceSide.Old : EvidenceSide.New),
@@ -358,50 +359,20 @@ public sealed class ExcelAutomaticPlacementService
       : $"{major}-{minor}";
   }
 
-  public static CaseAnchorSignal[] ConfirmedAnchors(SheetLayoutSignals signals)
-  {
-    var candidates = signals.Anchors
-      .Where(anchor => anchor.HasValueInColumnA || anchor.HasValueInColumnB)
-      .OrderBy(anchor => anchor.Row)
-      .ToArray();
-    var firstRow = candidates.FirstOrDefault()?.Row ?? 0;
-    string? inheritedColumnA = null;
-    return candidates
-      .Where(anchor => anchor.Row == firstRow || anchor.HasTopBorder)
-      .Select(anchor =>
-      {
-        if (!string.IsNullOrWhiteSpace(anchor.ColumnAValue))
-        {
-          inheritedColumnA = anchor.ColumnAValue;
-        }
+  public static CaseAnchorSignal[] ConfirmedAnchors(SheetLayoutSignals signals) =>
+    CaseAnchorNormalizer.Normalize(signals.Anchors);
 
-        return string.IsNullOrWhiteSpace(anchor.ColumnAValue) && !string.IsNullOrWhiteSpace(inheritedColumnA)
-          ? anchor with { ColumnAValue = inheritedColumnA }
-          : anchor;
-      })
-      .ToArray();
-  }
-
-  internal static string? NormalizeCaseLabel(string label)
-  {
-    var normalized = label.Trim()
-      .Replace('－', '-').Replace('ー', '-').Replace('―', '-')
-      .Replace('‐', '-').Replace('‑', '-').Replace('–', '-').Replace('—', '-');
-    var parts = normalized.Split('-', StringSplitOptions.TrimEntries);
-    return parts.Length == 2 && parts.All(part => part.Length > 0)
-      ? $"{parts[0]}-{parts[1]}"
-      : null;
-  }
+  internal static string? NormalizeCaseLabel(string label) => CaseAnchorNormalizer.NormalizeCaseLabel(label);
 
   private static EvidenceSide SideForColumn(
     int column,
     EvidenceCaseLayout layout,
     EvidenceSide fallback) =>
-    column >= layout.OldRegion.FirstColumn && column <= layout.OldRegion.LastColumn
+    layout.OldRegion is { } old && column >= old.FirstColumn && column <= old.LastColumn
       ? EvidenceSide.Old
       : column >= layout.NewRegion.FirstColumn && column <= layout.NewRegion.LastColumn
         ? EvidenceSide.New
-        : fallback;
+        : layout.SupportsSide(fallback) ? fallback : EvidenceSide.New;
 
   private static RowInsertion ResolveAppliedInsertion(int currentCaseEnd, RowInsertion insertion)
   {
@@ -528,7 +499,8 @@ public sealed class ExcelAutomaticPlacementService
     foreach (var anchor in signals.Anchors.OrderBy(anchor => anchor.Row))
     {
       text.Append('A').Append(anchor.Row).Append(',').Append(anchor.HasValueInColumnA).Append(',')
-        .Append(anchor.HasValueInColumnB).Append(',').Append(anchor.HasTopBorder).Append('|');
+        .Append(anchor.HasValueInColumnB).Append(',').Append(anchor.HasTopBorder).Append(',')
+        .Append(anchor.ColumnAValue).Append(',').Append(anchor.ColumnBValue).Append('|');
     }
 
     foreach (var boundary in signals.VerticalBoundaries
@@ -545,6 +517,11 @@ public sealed class ExcelAutomaticPlacementService
     {
       text.Append('H').Append(boundary.Row).Append(',').Append(boundary.FirstColumn).Append(',')
         .Append(boundary.LastColumn).Append('|');
+    }
+
+    foreach (var column in signals.NewHeaderColumns.Order())
+    {
+      text.Append('N').Append(column).Append('|');
     }
 
     foreach (var column in signals.OldHeaderColumns.Order())

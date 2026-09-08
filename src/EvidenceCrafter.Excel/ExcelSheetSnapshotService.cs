@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using EvidenceCrafter.Core.Models;
+using EvidenceCrafter.Core.Services;
 
 namespace EvidenceCrafter.Excel;
 
@@ -300,7 +301,7 @@ public sealed class ExcelSheetSnapshotService
       }
       var hyperlinks = navigationOnly ? [] : ReadLinkedCells(worksheet, "Hyperlinks");
       captureStage = "reading Case anchors";
-      var anchors = ReadAnchors(
+      IReadOnlyList<CaseAnchorSignal> anchors = CaseAnchorNormalizer.Normalize(ReadAnchors(
         worksheet,
         values,
         formulas,
@@ -308,18 +309,13 @@ public sealed class ExcelSheetSnapshotService
         firstColumn,
         rowCount,
         columnCount,
-        lastColumn);
+        lastColumn));
       var firstAnchorRow = anchors.Count == 0 ? Math.Max(firstRow, 1) : anchors[0].Row;
-      captureStage = "reading Old-side headers";
-      var oldHeaderColumns = ReadOldHeaderColumns(
-        values,
-        formulas,
-        firstAnchorRow - 1,
-        firstRow,
-        firstColumn,
-        rowCount,
-        columnCount,
-        lastColumn);
+      captureStage = "reading New/Old headers";
+      var newHeaderColumns = ReadHeaderColumns(
+        values, firstAnchorRow - 1, firstRow, firstColumn, rowCount, columnCount, lastColumn, "新", "New");
+      var oldHeaderColumns = ReadHeaderColumns(
+        values, firstAnchorRow - 1, firstRow, firstColumn, rowCount, columnCount, lastColumn, "旧", "Old");
       captureStage = "reading vertical Case boundaries";
       var verticalBoundaries = ReadVerticalBoundaries(
         worksheet,
@@ -328,26 +324,17 @@ public sealed class ExcelSheetSnapshotService
         lastColumn,
         oldHeaderColumns,
         anchors.Count == 0 ? activeReference.Row : anchors[^1].Row);
-      var boundaryEndRows = verticalBoundaries.Select(boundary => boundary.EndRow).Distinct().ToArray();
-      var candidateEndRow = boundaryEndRows.Length == 1 ? boundaryEndRows[0] : lastRow;
       captureStage = "reading the Case bottom boundary";
       var expectedLastEvidenceColumn = oldHeaderColumns.Count == 1
         ? checked((oldHeaderColumns[0] * 2) - NewFirstColumn - 1)
         : (int?)null;
       var horizontalBoundaries = ReadBottomBoundary(
         worksheet,
-        candidateEndRow,
+        lastRow,
         lastColumn,
         expectedLastEvidenceColumn);
-      var observedLastColumn = horizontalBoundaries.Count == 1
-        ? horizontalBoundaries[0].LastColumn
-        : lastColumn;
-      var horizontalEndRows = horizontalBoundaries.Select(boundary => boundary.Row).Distinct().ToArray();
-      var logicalLastRow = boundaryEndRows.Length == 1
-        ? boundaryEndRows[0]
-        : horizontalEndRows.Length == 1
-          ? horizontalEndRows[0]
-          : lastRow;
+      var observedLastColumn = lastColumn;
+      var logicalLastRow = lastRow;
 
       var occupancyRow = scopeRow ?? activeReference.Row;
       var currentAnchor = anchors.LastOrDefault(anchor => anchor.Row <= occupancyRow);
@@ -390,7 +377,7 @@ public sealed class ExcelSheetSnapshotService
         anchors,
         verticalBoundaries,
         horizontalBoundaries,
-        oldHeaderColumns);
+        oldHeaderColumns) { NewHeaderColumns = newHeaderColumns };
 
       if (!WorkbookWindowMatchesIdentity(workbook, identity))
       {
@@ -463,7 +450,7 @@ public sealed class ExcelSheetSnapshotService
         row,
         hasA,
         hasB,
-        result.Count > 0 && HasRangeBorder(worksheet, row, 1, row, lastColumn, XlEdgeTop),
+        false,
         DisplayValue(MatrixValue(values, row, 1, firstRow, firstColumn, rowCount, columnCount)),
         DisplayValue(MatrixValue(values, row, 2, firstRow, firstColumn, rowCount, columnCount))));
     }
@@ -471,15 +458,16 @@ public sealed class ExcelSheetSnapshotService
     return result;
   }
 
-  private static IReadOnlyList<int> ReadOldHeaderColumns(
+  private static IReadOnlyList<int> ReadHeaderColumns(
     object? values,
-    object? formulas,
     int headerRow,
     int firstRow,
     int firstColumn,
     int rowCount,
     int columnCount,
-    int lastColumn)
+    int lastColumn,
+    string japaneseLabel,
+    string englishLabel)
   {
     if (headerRow < firstRow || headerRow >= firstRow + rowCount)
     {
@@ -487,10 +475,11 @@ public sealed class ExcelSheetSnapshotService
     }
 
     var result = new List<int>();
-    for (var column = NewFirstColumn + 1; column <= lastColumn; column++)
+    for (var column = NewFirstColumn; column <= lastColumn; column++)
     {
-      if (IsNonEmpty(MatrixValue(values, headerRow, column, firstRow, firstColumn, rowCount, columnCount)) ||
-        IsNonEmpty(MatrixValue(formulas, headerRow, column, firstRow, firstColumn, rowCount, columnCount)))
+      var label = DisplayValue(MatrixValue(values, headerRow, column, firstRow, firstColumn, rowCount, columnCount))?.Trim();
+      if (string.Equals(label, japaneseLabel, StringComparison.Ordinal) ||
+        string.Equals(label, englishLabel, StringComparison.OrdinalIgnoreCase))
       {
         result.Add(column);
       }
@@ -512,9 +501,7 @@ public sealed class ExcelSheetSnapshotService
       return [];
     }
 
-    var columns = oldHeaderColumns.Count > 0
-      ? oldHeaderColumns.Select(column => column - 1)
-      : Enumerable.Range(NewFirstColumn, lastColumn - NewFirstColumn);
+    var columns = oldHeaderColumns.Select(column => column - 1);
     var result = new List<VerticalBoundarySignal>();
     foreach (var column in columns.Distinct().Where(column => column >= NewFirstColumn && column < lastColumn))
     {
@@ -527,21 +514,7 @@ public sealed class ExcelSheetSnapshotService
         continue;
       }
 
-      if (!HasCellBorder(worksheet, firstAnchorRow, column, XlEdgeRight))
-      {
-        continue;
-      }
-
-      var endRow = firstAnchorRow;
-      while (endRow < lastRow && HasCellBorder(worksheet, endRow + 1, column, XlEdgeRight))
-      {
-        endRow++;
-      }
-
-      if (endRow >= minimumEndRow)
-      {
-        result.Add(new VerticalBoundarySignal(column, firstAnchorRow, endRow));
-      }
+      // Partial borders are decorative; do not scan individual rows for placement.
     }
 
     return result;

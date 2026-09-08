@@ -37,14 +37,17 @@ public sealed class ExcelCaseNavigationService
     }
 
     var snapshot = captured.Snapshot;
-    var anchors = ExcelAutomaticPlacementService.ConfirmedAnchors(snapshot.LayoutSignals);
-    var blocks = sameCaseThenNext
-      ? anchors.SelectMany(anchor => new[]
-        {
-          new Block(anchor, EvidenceSide.New),
-          new Block(anchor, EvidenceSide.Old),
-        }).ToArray()
-      : anchors.Select(anchor => new Block(anchor, currentSide)).ToArray();
+    var blocks = AvailableBlocks(snapshot, currentSide, sameCaseThenNext);
+    if (blocks.Length == 0)
+    {
+      return CaseNavigationResult.Failed("Case番号・新／旧ヘッダーから配置先を解析できません。");
+    }
+    if (blocks[0].Layout.Kind == SideLayoutKind.NewOnly) currentSide = EvidenceSide.New;
+    if (!string.IsNullOrWhiteSpace(currentCaseLabel) && !blocks.Any(block =>
+      ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor) == ExcelAutomaticPlacementService.NormalizeCaseLabel(currentCaseLabel)))
+    {
+      return CaseNavigationResult.Failed("指定Caseが見つかりません。配置先を確認してください。");
+    }
     var currentIndex = FindCurrentIndex(blocks, snapshot, currentCaseLabel, currentSide);
     var step = direction is CaseNavigationDirection.Previous ? -1 : 1;
     Block? block = null;
@@ -72,20 +75,15 @@ public sealed class ExcelCaseNavigationService
         : "次に空いている配置先はありません。");
     }
 
-    var layout = layoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = block.Anchor.Row }).Layout;
-    if (layout is null)
-    {
-      return CaseNavigationResult.Failed("次の配置先のレイアウトを安全に解析できません。");
-    }
-    var firstColumn = block.Side is EvidenceSide.New
-      ? layout.NewRegion.FirstColumn
-      : layout.OldRegion.FirstColumn;
+    var layout = block.Layout;
+    var firstColumn = layout.RegionFor(block.Side).FirstColumn;
     var target = new CellReference(layout.StartRow + 2, firstColumn + 1);
     var focused = focusService.FocusPlacedImage(workbook, snapshot.WorksheetName, target);
     var caseLabel = ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor);
     return focused.Succeeded
       ? new CaseNavigationResult(true, snapshot.WorksheetName, caseLabel, block.Side, target,
         $"{snapshot.WorksheetName} / Case {caseLabel} / {block.Side} へ移動しました。")
+        { LayoutSignals = snapshot.LayoutSignals, LayoutKind = layout.Kind }
       : CaseNavigationResult.Failed(focused.Message);
   }
 
@@ -119,10 +117,7 @@ public sealed class ExcelCaseNavigationService
       }
 
       var snapshot = captured.Snapshot;
-      var anchors = ExcelAutomaticPlacementService.ConfirmedAnchors(snapshot.LayoutSignals);
-      var blocks = sameCaseThenNext
-        ? anchors.SelectMany(anchor => new[] { new Block(anchor, EvidenceSide.New), new Block(anchor, EvidenceSide.Old) })
-        : anchors.Select(anchor => new Block(anchor, currentSide));
+      var blocks = AvailableBlocks(snapshot, currentSide, sameCaseThenNext);
       foreach (var block in blocks)
       {
         if (IsOccupied(snapshot, block))
@@ -130,20 +125,16 @@ public sealed class ExcelCaseNavigationService
           continue;
         }
 
-        var layout = layoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = block.Anchor.Row }).Layout;
-        if (layout is null)
-        {
-          continue;
-        }
-
-        var region = block.Side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
+        var layout = block.Layout;
+        var region = layout.RegionFor(block.Side);
         var target = new CellReference(layout.StartRow + 2, region.FirstColumn + 1);
         var focused = focusService.FocusPlacedImage(workbook, candidate.Name, target);
         if (focused.Succeeded)
         {
           var caseLabel = ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor);
           return new CaseNavigationResult(true, candidate.Name, caseLabel, block.Side, target,
-            $"{candidate.Name} / Case {caseLabel} / {block.Side} へ移動しました。");
+            $"{candidate.Name} / Case {caseLabel} / {block.Side} へ移動しました。")
+            { LayoutSignals = snapshot.LayoutSignals, LayoutKind = layout.Kind };
         }
       }
     }
@@ -184,20 +175,34 @@ public sealed class ExcelCaseNavigationService
     return index >= 0 ? index : 0;
   }
 
-  private bool IsOccupied(SheetSnapshot snapshot, Block block)
+  private static bool IsOccupied(SheetSnapshot snapshot, Block block)
   {
-    var layout = layoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = block.Anchor.Row }).Layout;
-    if (layout is null)
-    {
-      return true;
-    }
-    var region = block.Side is EvidenceSide.New ? layout.NewRegion : layout.OldRegion;
+    var layout = block.Layout;
+    var region = layout.RegionFor(block.Side);
     return snapshot.Shapes.Any(shape =>
       shape.StartRow <= layout.EndRow && shape.EndRow >= layout.StartRow + 1 &&
       shape.StartColumn <= region.LastColumn && shape.EndColumn >= region.FirstColumn + 1);
   }
 
-  private sealed record Block(CaseAnchorSignal Anchor, EvidenceSide Side);
+  private Block[] AvailableBlocks(SheetSnapshot snapshot, EvidenceSide side, bool sameCaseThenNext)
+  {
+    var result = new List<Block>();
+    foreach (var anchor in ExcelAutomaticPlacementService.ConfirmedAnchors(snapshot.LayoutSignals))
+    {
+      var layout = layoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = anchor.Row }).Layout;
+      if (layout is null) continue;
+      if (sameCaseThenNext || layout.Kind == SideLayoutKind.NewOnly)
+      {
+        result.Add(new Block(anchor, EvidenceSide.New, layout));
+        if (sameCaseThenNext && layout.SupportsSide(EvidenceSide.Old))
+          result.Add(new Block(anchor, EvidenceSide.Old, layout));
+      }
+      else result.Add(new Block(anchor, side, layout));
+    }
+    return result.ToArray();
+  }
+
+  private sealed record Block(CaseAnchorSignal Anchor, EvidenceSide Side, EvidenceCaseLayout Layout);
 
   public static int? ResolveTargetRow(
     SheetLayoutSignals signals,
@@ -229,6 +234,8 @@ public sealed record CaseNavigationResult(
   CellReference Target,
   string Message)
 {
+  public SideLayoutKind LayoutKind { get; init; }
+  public SheetLayoutSignals? LayoutSignals { get; init; }
   public static CaseNavigationResult Failed(string message) =>
     new(false, string.Empty, string.Empty, EvidenceSide.New, default, message);
 }

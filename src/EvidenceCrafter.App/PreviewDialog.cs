@@ -109,6 +109,7 @@ internal sealed class PreviewDialog : Form
     var step = analysis.Steps[0];
     var insertionCount = step.Plan.Insertions.Sum(insertion => insertion.Count);
     return $"配置予定  |  Sheet: {analysis.WorksheetName}  |  Case: {analysis.CaseLabel}  |  Side: {analysis.ResolvedSide}{Environment.NewLine}" +
+      $"構成: {(analysis.LayoutAnalysis!.Layout!.Kind == SideLayoutKind.NewOnly ? "Newのみ" : "New/Old")}  |  " +
       $"開始セル: {ColumnName(step.Plan.FocusCell.Column)}{step.Plan.FocusCell.Row}  |  " +
       $"配置方法: {ModeLabel(step.Plan.Mode)}  |  追加予定行: {insertionCount}行  |  " +
       $"画像幅: {step.Plan.Image.WidthPoints:0.#}pt / 配置可能幅: {step.AvailableWidthPoints:0.#}pt";

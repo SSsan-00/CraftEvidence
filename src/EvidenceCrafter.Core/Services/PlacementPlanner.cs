@@ -130,9 +130,7 @@ public sealed class PlacementPlanner(ImageSizingService imageSizingService)
         "Preserve the minimum Case tail after the new image."));
     }
 
-    var sideColumns = request.Side is EvidenceSide.New
-      ? request.Layout.NewRegion
-      : request.Layout.OldRegion;
+    var sideColumns = request.Layout.RegionFor(request.Side);
 
     return new PlacementPlan(
       mode,
@@ -265,15 +263,16 @@ public sealed class PlacementPlanner(ImageSizingService imageSizingService)
       request.Layout.EndRow > MaximumWorksheetRow ||
       request.ActiveRow is < 1 or > MaximumWorksheetRow ||
       request.Layout.NewRegion.FirstColumn < 1 ||
-      request.Layout.NewRegion.LastColumn < request.Layout.NewRegion.FirstColumn ||
+      request.Layout.NewRegion.Count < 2 ||
       request.Layout.NewRegion.LastColumn > ExcelWorksheetLimits.MaximumColumn ||
-      request.Layout.OldRegion.FirstColumn < 1 ||
-      request.Layout.OldRegion.LastColumn < request.Layout.OldRegion.FirstColumn ||
-      request.Layout.OldRegion.LastColumn > ExcelWorksheetLimits.MaximumColumn ||
-      (long)request.Layout.NewRegion.LastColumn + 1 != request.Layout.OldRegion.FirstColumn)
+      (request.Layout.OldRegion is { } old &&
+        (old.FirstColumn < 1 || old.Count < 2 || old.LastColumn > ExcelWorksheetLimits.MaximumColumn ||
+          (long)request.Layout.NewRegion.LastColumn + 1 != old.FirstColumn)))
     {
       throw new ArgumentException("The Case layout contains invalid worksheet coordinates.", nameof(request));
     }
+
+    _ = request.Layout.RegionFor(request.Side);
 
     if (request.Contents.Any(content =>
       content.StartRow < request.Layout.StartRow ||

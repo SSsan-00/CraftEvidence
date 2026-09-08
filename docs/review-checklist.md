@@ -2,16 +2,16 @@
 
 ## 仕様
 
-- [ ] A/B列のすべての非空行をAnchor候補にしてよいか
-- [ ] 最終Caseの下罫線/縦罫線不一致をUnsafeとするか
-- [ ] Old見出しだけによるSide判定をMediumとして許可するか
+- [x] 数値の`X-X`を組み立てられるA/B列だけをAnchorにする
+- [x] 最終CaseはUsedRange終端を採用し、自動行削除を停止する
+- [x] 「新」を必須とし、「旧」の有無でNewのみ／New・Oldを判定する
 - [ ] 2行を「空白」ではなく「非画像帯」とする定義でよいか
 - [ ] 管理外Shapeを変更対象外とするか
 
 ## 技術
 
 - [ ] Core DTOにExcel固有型が漏れていないか
-- [ ] ROT列挙のCOM所有権が明確か
+- [x] ROT列挙のCOM所有権が明確で、IDispatch非対応オブジェクトを個別に解放するか
 - [ ] UIがClipboard取得だけでExcelを書き換えないか
 - [ ] package/RID/.NET 9方針が配布先に合うか
 
