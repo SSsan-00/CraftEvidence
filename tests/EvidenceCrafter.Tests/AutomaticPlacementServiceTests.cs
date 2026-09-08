@@ -162,8 +162,8 @@ public sealed class AutomaticPlacementServiceTests
     Assert.IsTrue(result.Succeeded, result.Message);
     Assert.HasCount(1, result.Steps);
     Assert.AreEqual(PlacementMode.CaseStart, result.Steps[0].Plan.Mode);
-    Assert.AreEqual(55, result.Steps[0].Plan.StartRow);
-    Assert.AreEqual(new CellReference(55, 4), result.Steps[0].Plan.FocusCell);
+    Assert.AreEqual(54, result.Steps[0].Plan.StartRow);
+    Assert.AreEqual(new CellReference(54, 4), result.Steps[0].Plan.FocusCell);
     Assert.IsFalse(string.IsNullOrWhiteSpace(result.SnapshotFingerprint));
   }
 

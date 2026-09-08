@@ -520,7 +520,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
         Assert.IsTrue(oppositeSide.Succeeded, oppositeSide.Message);
         Assert.AreEqual("1-1", oppositeSide.CaseLabel);
         Assert.AreEqual(EvidenceSide.Old, oppositeSide.Side);
-        Assert.AreEqual(5, oppositeSide.Target.Row);
+        Assert.AreEqual(4, oppositeSide.Target.Row);
 
         automaticShapes = GetRequiredProperty(worksheet, "Shapes");
         automaticShape = InvokeMethod(automaticShapes, "Item", automaticImage.ShapeName) ??

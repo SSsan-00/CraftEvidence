@@ -319,7 +319,7 @@ public sealed class MainForm : Form
     advanceModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
     advanceModeBox.ItemHeight = 21;
     advanceModeBox.Margin = new Padding(0);
-    advanceModeBox.Items.AddRange(["同じCaseの反対Sideを優先", "同じSideの次Caseを優先"]);
+    advanceModeBox.Items.AddRange(["同じCaseの反対Side", "同じSideの次Case"]);
     advanceModeBox.SelectedIndex = settings.AdvanceMode is PlacementAdvanceMode.NextCaseSameSide ? 1 : 0;
     advanceModeBox.SelectedIndexChanged += (_, _) => SaveAdvanceMode();
     targetCard.Controls.Add(advanceModeBox, 1, 2);
@@ -383,11 +383,11 @@ public sealed class MainForm : Form
     Margin = new Padding(0),
   };
 
-  private static void StyleButton(Button button, bool primary = false)
+  private void StyleButton(Button button, bool primary = false)
   {
     button.AutoSize = false;
     button.Size = new Size(
-      Math.Max(64, TextRenderer.MeasureText(button.Text, button.Font).Width + 24),
+      Math.Max(64, TextRenderer.MeasureText(button.Text, Font).Width + 24),
       28);
     button.FlatStyle = FlatStyle.Flat;
     button.FlatAppearance.BorderColor = primary ? Color.FromArgb(31, 112, 190) : Color.FromArgb(202, 210, 220);

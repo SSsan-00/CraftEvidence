@@ -77,7 +77,7 @@ public sealed class ExcelCaseNavigationService
 
     var layout = block.Layout;
     var firstColumn = layout.RegionFor(block.Side).FirstColumn;
-    var target = new CellReference(layout.StartRow + 2, firstColumn + 1);
+    var target = new CellReference(layout.StartRow + 1, firstColumn + 1);
     var focused = focusService.FocusPlacedImage(workbook, snapshot.WorksheetName, target);
     var caseLabel = ExcelAutomaticPlacementService.FormatCaseLabel(block.Anchor);
     return focused.Succeeded
@@ -127,7 +127,7 @@ public sealed class ExcelCaseNavigationService
 
         var layout = block.Layout;
         var region = layout.RegionFor(block.Side);
-        var target = new CellReference(layout.StartRow + 2, region.FirstColumn + 1);
+        var target = new CellReference(layout.StartRow + 1, region.FirstColumn + 1);
         var focused = focusService.FocusPlacedImage(workbook, candidate.Name, target);
         if (focused.Succeeded)
         {
