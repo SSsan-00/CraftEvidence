@@ -239,7 +239,7 @@ public sealed class MainForm : Form
     var targetCard = CreateCard(6);
     targetCard.Margin = new Padding(0, 8, 0, 8);
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -310,7 +310,8 @@ public sealed class MainForm : Form
     var advanceLabel = CreateLabel("配置後");
     advanceLabel.Margin = new Padding(3, 0, 6, 0);
     targetCard.Controls.Add(advanceLabel, 0, 1);
-    advanceModeBox.Dock = DockStyle.Fill;
+    advanceModeBox.Width = 240;
+    advanceModeBox.Anchor = AnchorStyles.Left;
     advanceModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
     UiTheme.StyleComboBox(advanceModeBox);
     advanceModeBox.ItemHeight = 21;
@@ -319,9 +320,8 @@ public sealed class MainForm : Form
     advanceModeBox.SelectedIndex = settings.AdvanceMode is PlacementAdvanceMode.NextCaseSameSide ? 1 : 0;
     advanceModeBox.SelectedIndexChanged += (_, _) => SaveAdvanceMode();
     targetCard.Controls.Add(advanceModeBox, 1, 1);
-    targetCard.SetColumnSpan(advanceModeBox, 3);
-    targetCard.Controls.Add(previousCaseButton, 4, 1);
-    targetCard.Controls.Add(nextCaseButton, 5, 1);
+    targetCard.Controls.Add(previousCaseButton, 2, 1);
+    targetCard.Controls.Add(nextCaseButton, 3, 1);
     layout.Controls.Add(targetCard, 0, 2);
 
     var actions = new FlowLayoutPanel
