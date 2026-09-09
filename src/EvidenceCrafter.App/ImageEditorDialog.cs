@@ -118,9 +118,9 @@ internal sealed class ImageEditorDialog : Form
       BackColor = UiTheme.Canvas,
     };
     UiTheme.StyleButton(applyButton, Font, primary: true);
-    applyButton.Size = new Size(132, 32);
+    applyButton.MinimumSize = new Size(132, 32);
     UiTheme.StyleButton(cancelButton, Font);
-    cancelButton.Size = new Size(108, 32);
+    cancelButton.MinimumSize = new Size(108, 32);
     bottomPanel.Controls.Add(cancelButton);
     bottomPanel.Controls.Add(applyButton);
 
@@ -517,9 +517,9 @@ internal sealed class ImageTextInputDialog : Form
       BackColor = UiTheme.Canvas,
     };
     UiTheme.StyleButton(okButton, Font, primary: true);
-    okButton.Size = new Size(92, 32);
+    okButton.MinimumSize = new Size(92, 32);
     UiTheme.StyleButton(cancelButton, Font);
-    cancelButton.Size = new Size(108, 32);
+    cancelButton.MinimumSize = new Size(108, 32);
     buttons.Controls.Add(cancelButton);
     buttons.Controls.Add(okButton);
 

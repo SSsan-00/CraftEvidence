@@ -89,7 +89,7 @@ internal sealed class PreviewDialog : Form
     foreach (var button in new[] { placeButton, editButton, closeButton })
     {
       UiTheme.StyleButton(button, Font, ReferenceEquals(button, placeButton) && canPlace);
-      button.Size = new Size(130, 32);
+      button.MinimumSize = new Size(130, 32);
       buttons.Controls.Add(button);
     }
     layout.Controls.Add(buttons, 0, 2);

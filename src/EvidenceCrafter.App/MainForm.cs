@@ -217,7 +217,7 @@ public sealed class MainForm : Form
     }, 0, 0);
 
     var workbookRow = CreateCard(3);
-    workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+    workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     workbookRow.Controls.Add(CreateLabel("対象ブック"), 0, 0);
@@ -238,7 +238,7 @@ public sealed class MainForm : Form
 
     var targetCard = CreateCard(4);
     targetCard.Margin = new Padding(0, 8, 0, 8);
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -291,7 +291,14 @@ public sealed class MainForm : Form
       Padding = new Padding(0),
       Anchor = AnchorStyles.Left,
     };
-    casePanel.Controls.Add(new Label { AutoSize = true, Text = "Case", Margin = new Padding(0, 7, 5, 0) });
+    casePanel.Controls.Add(new Label
+    {
+      AutoSize = true,
+      Text = "Case",
+      TextAlign = ContentAlignment.MiddleLeft,
+      Margin = new Padding(0, 8, 5, 0),
+      UseCompatibleTextRendering = false,
+    });
     caseLabelBox.Width = 86;
     StyleTextBox(caseLabelBox);
     caseLabelBox.PlaceholderText = "自動";
@@ -341,7 +348,7 @@ public sealed class MainForm : Form
     };
     captureScreenButton.Text = "画像をキャプチャ";
     StyleButton(captureScreenButton, primary: true);
-    captureScreenButton.Width = 172;
+    captureScreenButton.MinimumSize = new Size(172, 32);
     captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
     actions.Controls.Add(captureScreenButton);
     actions.Controls.Add(new Label { AutoSize = true, Text = "履歴", Margin = new Padding(18, 7, 4, 0), ForeColor = UiTheme.TextMuted });
@@ -460,6 +467,8 @@ public sealed class MainForm : Form
     Text = text,
     Font = new Font("Meiryo UI", 9F, FontStyle.Bold),
     ForeColor = UiTheme.Text,
+    TextAlign = ContentAlignment.MiddleLeft,
+    UseCompatibleTextRendering = false,
     Anchor = AnchorStyles.Left,
   };
 
