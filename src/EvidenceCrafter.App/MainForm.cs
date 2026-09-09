@@ -236,28 +236,20 @@ public sealed class MainForm : Form
     workbookRow.Controls.Add(refreshButton, 2, 0);
     layout.Controls.Add(workbookRow, 0, 1);
 
-    var targetCard = CreateCard(6);
+    var targetCard = CreateCard(1);
     targetCard.Margin = new Padding(0, 8, 0, 8);
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+    var primaryTargetRow = CreateTargetRow();
+    var secondaryTargetRow = CreateTargetRow();
     var sheetLabel = CreateLabel("Sheet");
     sheetLabel.Margin = new Padding(3, 0, 6, 0);
-    targetCard.Controls.Add(sheetLabel, 0, 0);
+    primaryTargetRow.Controls.Add(sheetLabel);
     worksheetNameBox.Width = 120;
-    worksheetNameBox.Anchor = AnchorStyles.Left;
     StyleTextBox(worksheetNameBox);
     worksheetNameBox.PlaceholderText = "シート名";
     worksheetNameBox.TextChanged += (_, _) => MarkPlacementTargetOverridden();
     worksheetNameBox.Validated += async (_, _) => await RefreshManualSideLayoutAsync();
-    targetCard.Controls.Add(worksheetNameBox, 1, 0);
-
-    var placementLabel = CreateLabel("配置先");
-    placementLabel.Margin = new Padding(12, 0, 6, 0);
-    targetCard.Controls.Add(placementLabel, 2, 0);
+    primaryTargetRow.Controls.Add(worksheetNameBox);
     var sidePanel = new FlowLayoutPanel
     {
       AutoSize = true,
@@ -282,11 +274,10 @@ public sealed class MainForm : Form
     };
     sidePanel.Controls.Add(newSideButton);
     sidePanel.Controls.Add(oldSideButton);
-    targetCard.Controls.Add(sidePanel, 3, 0);
 
     var caseLabel = CreateLabel("CASE");
     caseLabel.Margin = new Padding(12, 0, 6, 0);
-    targetCard.Controls.Add(caseLabel, 4, 0);
+    primaryTargetRow.Controls.Add(caseLabel);
     caseLabelBox.Width = 86;
     StyleTextBox(caseLabelBox);
     caseLabelBox.PlaceholderText = "自動";
@@ -298,7 +289,7 @@ public sealed class MainForm : Form
         placementTargetOverridden = true;
       }
     };
-    targetCard.Controls.Add(caseLabelBox, 5, 0);
+    primaryTargetRow.Controls.Add(caseLabelBox);
     previousCaseButton.Text = "前のCASE";
     StyleButton(previousCaseButton);
     previousCaseButton.Margin = new Padding(8, 0, 3, 0);
@@ -306,12 +297,17 @@ public sealed class MainForm : Form
     nextCaseButton.Text = "次のCASE";
     StyleButton(nextCaseButton);
     nextCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Next);
+    primaryTargetRow.Controls.Add(previousCaseButton);
+    primaryTargetRow.Controls.Add(nextCaseButton);
 
+    var placementLabel = CreateLabel("配置先");
+    placementLabel.Margin = new Padding(3, 0, 6, 0);
+    secondaryTargetRow.Controls.Add(placementLabel);
+    secondaryTargetRow.Controls.Add(sidePanel);
     var advanceLabel = CreateLabel("配置後");
-    advanceLabel.Margin = new Padding(3, 0, 6, 0);
-    targetCard.Controls.Add(advanceLabel, 0, 1);
+    advanceLabel.Margin = new Padding(16, 0, 6, 0);
+    secondaryTargetRow.Controls.Add(advanceLabel);
     advanceModeBox.Width = 240;
-    advanceModeBox.Anchor = AnchorStyles.Left;
     advanceModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
     UiTheme.StyleComboBox(advanceModeBox);
     advanceModeBox.ItemHeight = 21;
@@ -319,9 +315,9 @@ public sealed class MainForm : Form
     advanceModeBox.Items.AddRange(["同じCASEの反対Side", "同じSideの次CASE"]);
     advanceModeBox.SelectedIndex = settings.AdvanceMode is PlacementAdvanceMode.NextCaseSameSide ? 1 : 0;
     advanceModeBox.SelectedIndexChanged += (_, _) => SaveAdvanceMode();
-    targetCard.Controls.Add(advanceModeBox, 1, 1);
-    targetCard.Controls.Add(previousCaseButton, 2, 1);
-    targetCard.Controls.Add(nextCaseButton, 3, 1);
+    secondaryTargetRow.Controls.Add(advanceModeBox);
+    targetCard.Controls.Add(primaryTargetRow, 0, 0);
+    targetCard.Controls.Add(secondaryTargetRow, 0, 1);
     layout.Controls.Add(targetCard, 0, 2);
 
     var actions = new FlowLayoutPanel
@@ -411,6 +407,15 @@ public sealed class MainForm : Form
     Margin = new Padding(0),
   };
 
+  private static FlowLayoutPanel CreateTargetRow() => new()
+  {
+    AutoSize = true,
+    Dock = DockStyle.Fill,
+    WrapContents = false,
+    Margin = new Padding(0, 0, 0, 6),
+    Padding = new Padding(0),
+  };
+
   private void StyleButton(Button button, bool primary = false) => UiTheme.StyleButton(button, Font, primary);
 
   private static void StyleSideButton(RadioButton button)
@@ -452,8 +457,8 @@ public sealed class MainForm : Form
 
   private static Label CreateLabel(string text) => new()
   {
-    AutoSize = true,
-    MinimumSize = new Size(0, 32),
+    AutoSize = false,
+    Size = new Size(64, 32),
     Text = text,
     Font = new Font("Meiryo UI", 9F, FontStyle.Bold),
     ForeColor = UiTheme.Text,
