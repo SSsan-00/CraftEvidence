@@ -7,7 +7,8 @@ public sealed class PlacementPlanner(ImageSizingService imageSizingService)
 {
   private const int MinimumImageGapRows = 2;
   private const int MinimumTailRows = 4;
-  private const int PlacementRowInset = 1;
+  // Leave two rows below the case header before placing the image.
+  private const int PlacementRowInset = 2;
   private const int PlacementColumnInset = 1;
   private const int MaximumWorksheetRow = ExcelWorksheetLimits.MaximumRow;
 

@@ -21,21 +21,21 @@ public sealed class PlacementPlannerTests
     var result = planner.Plan(request);
 
     Assert.AreEqual(PlacementMode.CaseStart, result.Mode);
-    Assert.AreEqual(4, result.StartRow);
-    Assert.AreEqual(5, result.EndRow);
-    Assert.AreEqual(new CellReference(4, 4), result.FocusCell);
+    Assert.AreEqual(5, result.StartRow);
+    Assert.AreEqual(6, result.EndRow);
+    Assert.AreEqual(new CellReference(5, 4), result.FocusCell);
     Assert.HasCount(0, result.Insertions);
   }
 
   [TestMethod]
-  public void Plan_CaseNumberAtB3_StartsImageAtD4()
+  public void Plan_CaseNumberAtB3_StartsImageAtD5()
   {
     var request = CreateRequest(contents: [], activeRow: 10);
 
     var result = planner.Plan(request);
 
     Assert.AreEqual(PlacementMode.CaseStart, result.Mode);
-    Assert.AreEqual(new CellReference(4, 4), result.FocusCell);
+    Assert.AreEqual(new CellReference(5, 4), result.FocusCell);
   }
 
   [TestMethod]
@@ -45,7 +45,7 @@ public sealed class PlacementPlannerTests
 
     var result = planner.Plan(request);
 
-    Assert.AreEqual(new CellReference(4, 19), result.FocusCell);
+    Assert.AreEqual(new CellReference(5, 19), result.FocusCell);
   }
 
   [TestMethod]
@@ -208,7 +208,7 @@ public sealed class PlacementPlannerTests
   public void Plan_NewOnly_PreservesInsetAndRejectsOld()
   {
     var request = CreateRequest([]) with { Layout = Layout with { OldRegion = null } };
-    Assert.AreEqual(new CellReference(4, 4), planner.Plan(request).FocusCell);
+    Assert.AreEqual(new CellReference(5, 4), planner.Plan(request).FocusCell);
     Assert.ThrowsExactly<InvalidOperationException>(() => planner.Plan(request with { Side = EvidenceSide.Old }));
   }
 

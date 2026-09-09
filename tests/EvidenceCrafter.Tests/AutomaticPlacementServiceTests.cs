@@ -152,7 +152,7 @@ public sealed class AutomaticPlacementServiceTests
     Assert.IsTrue(result.Succeeded, result.Message);
     Assert.AreEqual("1-2", result.CaseLabel);
     Assert.AreEqual(53, result.AnalysisRow);
-    Assert.AreEqual(new CellReference(54, 4), result.Steps[0].Plan.FocusCell);
+    Assert.AreEqual(new CellReference(55, 4), result.Steps[0].Plan.FocusCell);
   }
 
   [TestMethod]
@@ -175,7 +175,7 @@ public sealed class AutomaticPlacementServiceTests
     Assert.IsTrue(result.Succeeded, result.Message);
     Assert.AreEqual("1-1", result.CaseLabel);
     Assert.AreEqual(EvidenceSide.Old, result.ResolvedSide);
-    Assert.AreEqual(new CellReference(4, 19), result.Steps[0].Plan.FocusCell);
+    Assert.AreEqual(new CellReference(5, 19), result.Steps[0].Plan.FocusCell);
   }
 
   [TestMethod]
@@ -256,8 +256,8 @@ public sealed class AutomaticPlacementServiceTests
     Assert.IsTrue(result.Succeeded, result.Message);
     Assert.HasCount(1, result.Steps);
     Assert.AreEqual(PlacementMode.CaseStart, result.Steps[0].Plan.Mode);
-    Assert.AreEqual(54, result.Steps[0].Plan.StartRow);
-    Assert.AreEqual(new CellReference(54, 4), result.Steps[0].Plan.FocusCell);
+    Assert.AreEqual(55, result.Steps[0].Plan.StartRow);
+    Assert.AreEqual(new CellReference(55, 4), result.Steps[0].Plan.FocusCell);
     Assert.IsFalse(string.IsNullOrWhiteSpace(result.SnapshotFingerprint));
   }
 

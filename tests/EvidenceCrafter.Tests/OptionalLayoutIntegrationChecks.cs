@@ -66,7 +66,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
           var planned = automatic.AnalyzeSnapshot(captured.Snapshot, EvidenceSide.New, request,
             requestedCaseLabel: "1-1");
           Assert.IsTrue(planned.Succeeded, $"{context}: {planned.Message}");
-          Assert.AreEqual(new CellReference(4, 4), planned.Steps[0].Plan.FocusCell,
+          Assert.AreEqual(new CellReference(5, 4), planned.Steps[0].Plan.FocusCell,
             "Placement must use the Case anchor, not the selected G10 cell.");
           Assert.IsEmpty(planned.Steps[0].Plan.Insertions, context);
           if (hasBorders)
