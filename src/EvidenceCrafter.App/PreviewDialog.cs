@@ -113,7 +113,7 @@ internal sealed class PreviewDialog : Form
 
     var step = analysis.Steps[0];
     var insertionCount = step.Plan.Insertions.Sum(insertion => insertion.Count);
-    return $"配置予定  |  Sheet: {analysis.WorksheetName}  |  Case: {analysis.CaseLabel}  |  Side: {analysis.ResolvedSide}{Environment.NewLine}" +
+    return $"配置予定  |  Sheet: {analysis.WorksheetName}  |  CASE: {analysis.CaseLabel}  |  Side: {analysis.ResolvedSide}{Environment.NewLine}" +
       $"構成: {(analysis.LayoutAnalysis!.Layout!.Kind == SideLayoutKind.NewOnly ? "Newのみ" : "New/Old")}  |  " +
       $"開始セル: {ColumnName(step.Plan.FocusCell.Column)}{step.Plan.FocusCell.Row}  |  " +
       $"配置方法: {ModeLabel(step.Plan.Mode)}  |  追加予定行: {insertionCount}行  |  " +
@@ -122,7 +122,7 @@ internal sealed class PreviewDialog : Form
 
   private static string ModeLabel(PlacementMode mode) => mode switch
   {
-    PlacementMode.CaseStart => "Case先頭",
+    PlacementMode.CaseStart => "CASE先頭",
     PlacementMode.Gap => "選択中の空き領域",
     _ => "既存画像の末尾",
   };

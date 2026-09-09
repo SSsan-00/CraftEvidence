@@ -236,32 +236,33 @@ public sealed class MainForm : Form
     workbookRow.Controls.Add(refreshButton, 2, 0);
     layout.Controls.Add(workbookRow, 0, 1);
 
-    var targetCard = CreateCard(4);
+    var targetCard = CreateCard(6);
     targetCard.Margin = new Padding(0, 8, 0, 8);
-    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    targetCard.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
     var sheetLabel = CreateLabel("Sheet");
-    sheetLabel.Margin = new Padding(3, 0, 3, 6);
+    sheetLabel.Margin = new Padding(3, 0, 6, 0);
     targetCard.Controls.Add(sheetLabel, 0, 0);
-    worksheetNameBox.Dock = DockStyle.Fill;
+    worksheetNameBox.Width = 120;
+    worksheetNameBox.Anchor = AnchorStyles.Left;
     StyleTextBox(worksheetNameBox);
-    worksheetNameBox.Margin = new Padding(0, 0, 0, 6);
     worksheetNameBox.PlaceholderText = "シート名";
     worksheetNameBox.TextChanged += (_, _) => MarkPlacementTargetOverridden();
     worksheetNameBox.Validated += async (_, _) => await RefreshManualSideLayoutAsync();
     targetCard.Controls.Add(worksheetNameBox, 1, 0);
-    targetCard.SetColumnSpan(worksheetNameBox, 3);
 
     var placementLabel = CreateLabel("配置先");
-    placementLabel.Margin = new Padding(3, 0, 3, 6);
-    targetCard.Controls.Add(placementLabel, 0, 1);
+    placementLabel.Margin = new Padding(12, 0, 6, 0);
+    targetCard.Controls.Add(placementLabel, 2, 0);
     var sidePanel = new FlowLayoutPanel
     {
       AutoSize = true,
       WrapContents = false,
-      Margin = new Padding(0, 0, 0, 6),
+      Margin = new Padding(0),
       Padding = new Padding(0),
     };
     newSideButton.Text = "NEW";
@@ -281,24 +282,11 @@ public sealed class MainForm : Form
     };
     sidePanel.Controls.Add(newSideButton);
     sidePanel.Controls.Add(oldSideButton);
-    targetCard.Controls.Add(sidePanel, 1, 1);
+    targetCard.Controls.Add(sidePanel, 3, 0);
 
-    var casePanel = new FlowLayoutPanel
-    {
-      AutoSize = true,
-      WrapContents = false,
-      Margin = new Padding(8, 0, 0, 6),
-      Padding = new Padding(0),
-      Anchor = AnchorStyles.Left,
-    };
-    casePanel.Controls.Add(new Label
-    {
-      AutoSize = true,
-      Text = "Case",
-      TextAlign = ContentAlignment.MiddleLeft,
-      Margin = new Padding(0, 8, 5, 0),
-      UseCompatibleTextRendering = false,
-    });
+    var caseLabel = CreateLabel("CASE");
+    caseLabel.Margin = new Padding(12, 0, 6, 0);
+    targetCard.Controls.Add(caseLabel, 4, 0);
     caseLabelBox.Width = 86;
     StyleTextBox(caseLabelBox);
     caseLabelBox.PlaceholderText = "自動";
@@ -310,31 +298,30 @@ public sealed class MainForm : Form
         placementTargetOverridden = true;
       }
     };
-    casePanel.Controls.Add(caseLabelBox);
-    previousCaseButton.Text = "前のCase";
+    targetCard.Controls.Add(caseLabelBox, 5, 0);
+    previousCaseButton.Text = "前のCASE";
     StyleButton(previousCaseButton);
-    previousCaseButton.Margin = new Padding(6, 0, 3, 0);
+    previousCaseButton.Margin = new Padding(8, 0, 3, 0);
     previousCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Previous);
-    nextCaseButton.Text = "次のCase";
+    nextCaseButton.Text = "次のCASE";
     StyleButton(nextCaseButton);
     nextCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Next);
-    casePanel.Controls.Add(previousCaseButton);
-    casePanel.Controls.Add(nextCaseButton);
-    casePanel.MinimumSize = casePanel.PreferredSize;
-    targetCard.Controls.Add(casePanel, 2, 1);
-    targetCard.SetColumnSpan(casePanel, 2);
 
-    targetCard.Controls.Add(CreateLabel("配置後"), 0, 2);
+    var advanceLabel = CreateLabel("配置後");
+    advanceLabel.Margin = new Padding(3, 0, 6, 0);
+    targetCard.Controls.Add(advanceLabel, 0, 1);
     advanceModeBox.Dock = DockStyle.Fill;
     advanceModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
     UiTheme.StyleComboBox(advanceModeBox);
     advanceModeBox.ItemHeight = 21;
     advanceModeBox.Margin = new Padding(0);
-    advanceModeBox.Items.AddRange(["同じCaseの反対Side", "同じSideの次Case"]);
+    advanceModeBox.Items.AddRange(["同じCASEの反対Side", "同じSideの次CASE"]);
     advanceModeBox.SelectedIndex = settings.AdvanceMode is PlacementAdvanceMode.NextCaseSameSide ? 1 : 0;
     advanceModeBox.SelectedIndexChanged += (_, _) => SaveAdvanceMode();
-    targetCard.Controls.Add(advanceModeBox, 1, 2);
+    targetCard.Controls.Add(advanceModeBox, 1, 1);
     targetCard.SetColumnSpan(advanceModeBox, 3);
+    targetCard.Controls.Add(previousCaseButton, 4, 1);
+    targetCard.Controls.Add(nextCaseButton, 5, 1);
     layout.Controls.Add(targetCard, 0, 2);
 
     var actions = new FlowLayoutPanel
@@ -466,6 +453,7 @@ public sealed class MainForm : Form
   private static Label CreateLabel(string text) => new()
   {
     AutoSize = true,
+    MinimumSize = new Size(0, 32),
     Text = text,
     Font = new Font("Meiryo UI", 9F, FontStyle.Bold),
     ForeColor = UiTheme.Text,
@@ -587,7 +575,7 @@ public sealed class MainForm : Form
     if (layout.Layout is { } resolved)
     {
       ApplySideLayout(resolved.Kind);
-      SetStatus($"{sheet} / Case {label} / {SelectedSide}  構成: {(resolved.Kind == SideLayoutKind.NewOnly ? "Newのみ" : "New/Old")}");
+      SetStatus($"{sheet} / CASE {label} / {SelectedSide}  構成: {(resolved.Kind == SideLayoutKind.NewOnly ? "Newのみ" : "New/Old")}");
     }
     else SetStatus(string.Join(" ", layout.Reasons));
   }
@@ -1049,7 +1037,7 @@ public sealed class MainForm : Form
       using var imageCopy = new Bitmap(image);
       imageCopy.Save(imagePath, ImageFormat.Png);
       var request = new AutomaticPlacementImage(imagePath, ToImageDimensions(imageCopy));
-      SetStatus("配置予定のCase／Sideを解析しています…");
+      SetStatus("配置予定のCASE／Sideを解析しています…");
       var analysis = workbook is null
         ? AutomaticPlacementAnalysisResult.Failed("Workbookが選択されていません。")
         : await StaTask.Run(() => automaticPlacementService.Analyze(
@@ -1166,7 +1154,7 @@ public sealed class MainForm : Form
         imageCopy.Save(imagePath, ImageFormat.Png);
       }
       var dimensions = ToImageDimensions(imageCopy);
-      SetStatus("Case／Sideを解析して自動配置しています…");
+      SetStatus("CASE／Sideを解析して自動配置しています…");
       var result = await StaTask.Run(() => automaticPlacementService.PlaceImages(
         workbook,
         worksheetName,
@@ -1187,7 +1175,7 @@ public sealed class MainForm : Form
       RowDeletionSnapshot? cleanupSnapshot = null;
       if (result.Analysis?.CompletesCaseAfterPlacement == true)
       {
-        SetStatus("New／OldがそろったためCase末尾を整理しています…");
+        SetStatus("New／OldがそろったためCASE末尾を整理しています…");
         var cleanup = await StaTask.Run(() => caseMaintenanceService.TrimCompletedCaseTail(
           workbook,
           result.PlacedImages[^1].WorksheetName,
@@ -1375,7 +1363,7 @@ public sealed class MainForm : Form
 
     try
     {
-      SetStatus(direction is CaseNavigationDirection.Previous ? "前のCaseを検索しています…" : "次のCaseを検索しています…");
+      SetStatus(direction is CaseNavigationDirection.Previous ? "前のCASEを検索しています…" : "次のCASEを検索しています…");
       var result = await StaTask.Run(() => caseNavigationService.Navigate(
         workbook,
         worksheetName,
@@ -1388,7 +1376,7 @@ public sealed class MainForm : Form
     }
     catch (Exception exception) when (exception is not OutOfMemoryException)
     {
-      SetStatus($"Case移動に失敗しました: {exception.Message}");
+      SetStatus($"CASE移動に失敗しました: {exception.Message}");
     }
     finally
     {
@@ -1402,7 +1390,7 @@ public sealed class MainForm : Form
     string caseLabel,
     EvidenceSide side)
   {
-    SetStatus("次の空いているCase／Sideを検索しています…");
+    SetStatus("次の空いているCASE／Sideを検索しています…");
     var result = await StaTask.Run(() => caseNavigationService.Navigate(
       workbook,
       worksheetName,
