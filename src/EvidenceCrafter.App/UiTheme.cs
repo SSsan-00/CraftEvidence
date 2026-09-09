@@ -23,12 +23,9 @@ internal static class UiTheme
     button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
     button.Font = font;
     button.MinimumSize = new Size(64, 32);
-    button.FlatStyle = FlatStyle.Flat;
-    button.FlatAppearance.BorderSize = 1;
-    button.FlatAppearance.BorderColor = primary ? Primary : Border;
-    button.FlatAppearance.MouseOverBackColor = primary ? PrimaryHover : SurfaceMuted;
-    button.FlatAppearance.MouseDownBackColor = primary ? PrimaryHover : Color.FromArgb(226, 232, 239);
-    button.BackColor = primary ? Primary : Surface;
+    button.FlatStyle = FlatStyle.Standard;
+    button.UseVisualStyleBackColor = false;
+    button.BackColor = primary ? Primary : SurfaceMuted;
     button.ForeColor = primary ? Color.White : Text;
     button.Margin = new Padding(3, 0, 3, 0);
     button.Padding = new Padding(12, 2, 12, 2);

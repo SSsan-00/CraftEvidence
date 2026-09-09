@@ -461,17 +461,23 @@ public sealed class MainForm : Form
       : UiTheme.Border;
   }
 
-  private static Label CreateLabel(string text) => new()
+  private static Label CreateLabel(string text)
   {
-    AutoSize = false,
-    Size = new Size(64, 32),
-    Text = text,
-    Font = new Font("Meiryo UI", 9F, FontStyle.Bold),
-    ForeColor = UiTheme.Text,
-    TextAlign = ContentAlignment.MiddleLeft,
-    UseCompatibleTextRendering = false,
-    Anchor = AnchorStyles.Left,
-  };
+    var font = new Font("Meiryo UI", 9F, FontStyle.Bold);
+    var minimumWidth = string.Equals(text, "対象ブック", StringComparison.Ordinal) ? 96 : 64;
+    var width = Math.Max(minimumWidth, TextRenderer.MeasureText(text, font).Width + 16);
+    return new Label
+    {
+      AutoSize = false,
+      Size = new Size(width, 32),
+      Text = text,
+      Font = font,
+      ForeColor = UiTheme.Text,
+      TextAlign = ContentAlignment.MiddleLeft,
+      UseCompatibleTextRendering = false,
+      Anchor = AnchorStyles.Left,
+    };
+  }
 
   private async Task RefreshPlacementContextAsync(bool force = false)
   {
