@@ -40,7 +40,8 @@ public sealed class ExcelAutomaticPlacementService
     bool preferActiveGap = false,
     double horizontalMarginPoints = 6,
     string? requestedCaseLabel = null,
-    bool autoDetectSide = false)
+    bool autoDetectSide = false,
+    bool sameCaseThenNext = false)
   {
     ArgumentNullException.ThrowIfNull(workbook);
     ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
@@ -63,7 +64,7 @@ public sealed class ExcelAutomaticPlacementService
     }
 
     var snapshot = captured.Snapshot;
-    var selectedCase = ResolveRequestedCase(snapshot, requestedCaseLabel);
+    var selectedCase = ResolveRequestedCase(snapshot, requestedCaseLabel, side, sameCaseThenNext);
     if (!selectedCase.Succeeded)
     {
       return AutomaticPlacementAnalysisResult.Failed(selectedCase.Message);
@@ -87,7 +88,11 @@ public sealed class ExcelAutomaticPlacementService
       ActiveCell = new CellReference(selectedCase.Row, snapshot.ActiveCell.Column),
       LayoutSignals = snapshot.LayoutSignals with { ActiveRow = selectedCase.Row },
     };
-    if (autoDetectSide)
+    if (selectedCase.Side is { } fallbackSide)
+    {
+      side = fallbackSide;
+    }
+    else if (autoDetectSide)
     {
       var currentLayout = layoutAnalyzer.Analyze(snapshot.LayoutSignals).Layout;
       if (currentLayout is not null)
@@ -111,7 +116,8 @@ public sealed class ExcelAutomaticPlacementService
     IReadOnlyList<AutomaticPlacementImage> images,
     bool preferActiveGap = false,
     double horizontalMarginPoints = 6,
-    string? requestedCaseLabel = null)
+    string? requestedCaseLabel = null,
+    bool sameCaseThenNext = false)
   {
     ArgumentNullException.ThrowIfNull(snapshot);
     ArgumentNullException.ThrowIfNull(images);
@@ -127,7 +133,7 @@ public sealed class ExcelAutomaticPlacementService
         snapshot.IsReadOnly ? "対象Workbookは読み取り専用です。" : $"シート {snapshot.WorksheetName} は保護されています。");
     }
 
-    var selectedCase = ResolveRequestedCase(snapshot, requestedCaseLabel);
+    var selectedCase = ResolveRequestedCase(snapshot, requestedCaseLabel, side, sameCaseThenNext);
     if (!selectedCase.Succeeded)
     {
       return AutomaticPlacementAnalysisResult.Failed(selectedCase.Message);
@@ -138,6 +144,10 @@ public sealed class ExcelAutomaticPlacementService
       ActiveCell = new CellReference(selectedCase.Row, snapshot.ActiveCell.Column),
       LayoutSignals = snapshot.LayoutSignals with { ActiveRow = selectedCase.Row },
     };
+    if (selectedCase.Side is { } fallbackSide)
+    {
+      side = fallbackSide;
+    }
 
     var analyzed = layoutAnalyzer.Analyze(snapshot.LayoutSignals);
     if (!analyzed.IsSafe || analyzed.Layout is null)
@@ -323,19 +333,54 @@ public sealed class ExcelAutomaticPlacementService
     return FormatCaseLabel(anchor);
   }
 
-  private static RequestedCaseResolution ResolveRequestedCase(
+  private RequestedCaseResolution ResolveRequestedCase(
     SheetSnapshot snapshot,
-    string? requestedCaseLabel)
+    string? requestedCaseLabel,
+    EvidenceSide side,
+    bool sameCaseThenNext)
   {
     if (string.IsNullOrWhiteSpace(requestedCaseLabel))
     {
-      return new RequestedCaseResolution(true, snapshot.ActiveCell.Row, string.Empty);
+      var anchors = ConfirmedAnchors(snapshot.LayoutSignals);
+      var activeAnchor = anchors.LastOrDefault(anchor => anchor.Row <= snapshot.ActiveCell.Row);
+      var activeCaseEnd = activeAnchor is null
+        ? 0
+        : anchors.FirstOrDefault(anchor => anchor.Row > activeAnchor.Row)?.Row - 1 ??
+          snapshot.LayoutSignals.LogicalEvidenceLastRow;
+      if (activeAnchor is not null && snapshot.ActiveCell.Row <= activeCaseEnd)
+      {
+        return new RequestedCaseResolution(true, activeAnchor.Row, null, string.Empty);
+      }
+
+      foreach (var anchor in anchors)
+      {
+        var layout = layoutAnalyzer.Analyze(snapshot.LayoutSignals with { ActiveRow = anchor.Row }).Layout;
+        if (layout is null)
+        {
+          continue;
+        }
+
+        var availableSides = sameCaseThenNext && layout.Kind == SideLayoutKind.Both
+          ? new[] { side, side is EvidenceSide.New ? EvidenceSide.Old : EvidenceSide.New }
+          : [layout.SupportsSide(side) ? side : EvidenceSide.New];
+        foreach (var candidateSide in availableSides.Distinct())
+        {
+          if (!ExcelCaseNavigationService.IsOccupied(snapshot, layout, candidateSide))
+          {
+            return new RequestedCaseResolution(true, anchor.Row, candidateSide, string.Empty);
+          }
+        }
+      }
+
+      return new RequestedCaseResolution(false, 0, null, anchors.Length == 0
+        ? "Case番号を検出できません。"
+        : "未配置のCaseがありません。");
     }
 
     var normalizedLabel = NormalizeCaseLabel(requestedCaseLabel);
     if (normalizedLabel is null)
     {
-      return new RequestedCaseResolution(false, 0, "CaseはX-X形式で入力してください（例: 1-2）。");
+      return new RequestedCaseResolution(false, 0, null, "CaseはX-X形式で入力してください（例: 1-2）。");
     }
 
     var matches = ConfirmedAnchors(snapshot.LayoutSignals)
@@ -343,9 +388,9 @@ public sealed class ExcelAutomaticPlacementService
       .ToArray();
     return matches.Length switch
     {
-      1 => new RequestedCaseResolution(true, matches[0].Row, string.Empty),
-      0 => new RequestedCaseResolution(false, 0, $"Case '{normalizedLabel}' が見つかりません。"),
-      _ => new RequestedCaseResolution(false, 0,
+      1 => new RequestedCaseResolution(true, matches[0].Row, null, string.Empty),
+      0 => new RequestedCaseResolution(false, 0, null, $"Case '{normalizedLabel}' が見つかりません。"),
+      _ => new RequestedCaseResolution(false, 0, null,
         $"Case '{normalizedLabel}' が複数あります（行: {string.Join(", ", matches.Select(anchor => anchor.Row))}）。"),
     };
   }
@@ -591,7 +636,11 @@ public sealed class ExcelAutomaticPlacementService
     contents.Add(new ContentSpan(side, plan.StartRow, plan.EndRow, ContentKind.ManagedImage));
   }
 
-  private sealed record RequestedCaseResolution(bool Succeeded, int Row, string Message);
+  private sealed record RequestedCaseResolution(
+    bool Succeeded,
+    int Row,
+    EvidenceSide? Side,
+    string Message);
 }
 
 public sealed record AutomaticPlacementImage(string ImagePath, ImageDimensions Dimensions);

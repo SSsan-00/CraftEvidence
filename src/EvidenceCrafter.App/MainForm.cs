@@ -495,7 +495,8 @@ public sealed class MainForm : Form
       [new AutomaticPlacementImage("context", new ImageDimensions(1, 1))],
       preferActiveGap: false,
       horizontalMarginPoints: settings.HorizontalMarginPoints,
-      autoDetectSide: true));
+      autoDetectSide: true,
+      sameCaseThenNext: settings.AdvanceMode is PlacementAdvanceMode.SameCaseThenNext));
     if (requestVersion != Volatile.Read(ref placementContextRequestVersion) || !CanUpdateUi)
     {
       return;
@@ -1026,7 +1027,8 @@ public sealed class MainForm : Form
           [request],
           preferActiveGap: false,
           horizontalMarginPoints: settings.HorizontalMarginPoints,
-          requestedCaseLabel: requestedCaseLabel));
+          requestedCaseLabel: requestedCaseLabel,
+          sameCaseThenNext: settings.AdvanceMode is PlacementAdvanceMode.SameCaseThenNext));
 
       if (analysis.Succeeded)
       {

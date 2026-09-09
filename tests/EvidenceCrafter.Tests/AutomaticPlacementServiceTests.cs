@@ -23,7 +23,7 @@ public sealed class AutomaticPlacementServiceTests
 
     Assert.IsTrue(result.Succeeded, result.Message);
     Assert.AreEqual("1-1", result.CaseLabel);
-    Assert.AreEqual(snapshot.LayoutSignals, result.LayoutSignals);
+    Assert.AreEqual(snapshot.LayoutSignals with { ActiveRow = 3 }, result.LayoutSignals);
   }
 
   [TestMethod]
@@ -123,6 +123,100 @@ public sealed class AutomaticPlacementServiceTests
     Assert.AreEqual("1-1", result.CaseLabel);
     Assert.AreEqual(3, result.AnalysisRow);
     Assert.AreEqual(3, result.LayoutAnalysis!.Layout!.StartRow);
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_ActiveCellAboveFirstCase_UsesFirstUnoccupiedCase()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var signals = source with
+    {
+      ActiveRow = 1,
+      Anchors =
+      [
+        new CaseAnchorSignal(3, true, true, false, "1", "1"),
+        new CaseAnchorSignal(53, true, true, true, "1", "2"),
+      ],
+    };
+    var snapshot = Snapshot(signals) with
+    {
+      ActiveCell = new CellReference(1, 1),
+      Shapes = [new SnapshotShape("existing", 4, 20, 4, 10, true)],
+    };
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))]);
+
+    Assert.IsTrue(result.Succeeded, result.Message);
+    Assert.AreEqual("1-2", result.CaseLabel);
+    Assert.AreEqual(53, result.AnalysisRow);
+    Assert.AreEqual(new CellReference(54, 4), result.Steps[0].Plan.FocusCell);
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_OutsideCases_SameCaseModeUsesEmptyOppositeSideFirst()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var signals = source with { ActiveRow = 1 };
+    var snapshot = Snapshot(signals) with
+    {
+      ActiveCell = new CellReference(1, 1),
+      Shapes = [new SnapshotShape("existing-new", 4, 20, 4, 10, true)],
+    };
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))],
+      sameCaseThenNext: true);
+
+    Assert.IsTrue(result.Succeeded, result.Message);
+    Assert.AreEqual("1-1", result.CaseLabel);
+    Assert.AreEqual(EvidenceSide.Old, result.ResolvedSide);
+    Assert.AreEqual(new CellReference(4, 19), result.Steps[0].Plan.FocusCell);
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_ActiveCellBelowEvidence_UsesFirstUnoccupiedCase()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var signals = source with { ActiveRow = 200 };
+    var snapshot = Snapshot(signals) with { ActiveCell = new CellReference(200, 1) };
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))]);
+
+    Assert.IsTrue(result.Succeeded, result.Message);
+    Assert.AreEqual("1-1", result.CaseLabel);
+    Assert.AreEqual(3, result.AnalysisRow);
+  }
+
+  [TestMethod]
+  public void AnalyzeSnapshot_ActiveCellOutsideCases_FailsWhenEveryCaseIsOccupied()
+  {
+    var source = FixtureLoader.LoadLayout("default-final-case.json");
+    var signals = source with { ActiveRow = 1 };
+    var snapshot = Snapshot(signals) with
+    {
+      ActiveCell = new CellReference(1, 1),
+      Shapes =
+      [
+        new SnapshotShape("first", 4, 20, 4, 10, true),
+        new SnapshotShape("second", 54, 70, 4, 10, true),
+      ],
+    };
+
+    var result = new ExcelAutomaticPlacementService().AnalyzeSnapshot(
+      snapshot,
+      EvidenceSide.New,
+      [new AutomaticPlacementImage("image.png", new ImageDimensions(120, 60))]);
+
+    Assert.IsFalse(result.Succeeded);
+    StringAssert.Contains(result.Message, "未配置のCaseがありません");
   }
 
   [TestMethod]

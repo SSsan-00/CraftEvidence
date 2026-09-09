@@ -176,9 +176,14 @@ public sealed class ExcelCaseNavigationService
   }
 
   private static bool IsOccupied(SheetSnapshot snapshot, Block block)
+    => IsOccupied(snapshot, block.Layout, block.Side);
+
+  internal static bool IsOccupied(
+    SheetSnapshot snapshot,
+    EvidenceCaseLayout layout,
+    EvidenceSide side)
   {
-    var layout = block.Layout;
-    var region = layout.RegionFor(block.Side);
+    var region = layout.RegionFor(side);
     return snapshot.Shapes.Any(shape =>
       shape.StartRow <= layout.EndRow && shape.EndRow >= layout.StartRow + 1 &&
       shape.StartColumn <= region.LastColumn && shape.EndColumn >= region.FirstColumn + 1);
