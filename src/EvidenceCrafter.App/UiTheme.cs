@@ -38,8 +38,7 @@ internal static class UiTheme
 
   internal static void StyleTextBox(TextBox textBox)
   {
-    textBox.AutoSize = false;
-    textBox.Height = 30;
+    textBox.AutoSize = true;
     textBox.BackColor = Surface;
     textBox.ForeColor = Text;
     textBox.BorderStyle = BorderStyle.FixedSingle;

@@ -442,7 +442,7 @@ public sealed class MainForm : Form
   private static void StyleTextBox(TextBox textBox)
   {
     UiTheme.StyleTextBox(textBox);
-    textBox.Margin = new Padding(0);
+    textBox.Margin = new Padding(0, 4, 0, 4);
   }
 
   private void UpdateSideButtonColors()
