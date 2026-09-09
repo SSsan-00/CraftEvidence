@@ -186,7 +186,7 @@ public sealed class MainForm : Form
   {
     Text = "EvidenceCrafter";
     StartPosition = FormStartPosition.CenterScreen;
-    MinimumSize = new Size(680, 330);
+    MinimumSize = new Size(760, 370);
     Size = new Size(760, 370);
     AutoScaleMode = AutoScaleMode.Dpi;
     Font = new Font("Meiryo UI", 9F);
@@ -198,6 +198,7 @@ public sealed class MainForm : Form
       Padding = new Padding(14, 12, 14, 12),
       ColumnCount = 1,
       RowCount = 5,
+      AutoScroll = true,
     };
     layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     for (var row = 0; row < 5; row++)
@@ -311,6 +312,7 @@ public sealed class MainForm : Form
     nextCaseButton.Click += async (_, _) => await NavigateCaseAsync(CaseNavigationDirection.Next);
     casePanel.Controls.Add(previousCaseButton);
     casePanel.Controls.Add(nextCaseButton);
+    casePanel.MinimumSize = casePanel.PreferredSize;
     targetCard.Controls.Add(casePanel, 2, 1);
     targetCard.SetColumnSpan(casePanel, 2);
 
@@ -351,17 +353,20 @@ public sealed class MainForm : Form
     redoButton.Click += async (_, _) => await RedoAsync();
     actions.Controls.Add(undoButton);
     actions.Controls.Add(redoButton);
+    actions.MinimumSize = actions.PreferredSize;
     layout.Controls.Add(actions, 0, 3);
 
     var statusPanel = new Panel
     {
-      AutoSize = true,
+      Height = 36,
       Dock = DockStyle.Fill,
       BackColor = Color.FromArgb(234, 240, 247),
       Padding = new Padding(10, 7, 10, 7),
       Margin = new Padding(0, 8, 0, 0),
     };
-    statusLabel.AutoSize = true;
+    statusLabel.AutoEllipsis = true;
+    statusLabel.Dock = DockStyle.Fill;
+    statusLabel.TextAlign = ContentAlignment.MiddleLeft;
     statusLabel.Text = "Ready";
     statusLabel.ForeColor = Color.FromArgb(47, 79, 112);
     statusPanel.Controls.Add(statusLabel);
@@ -369,7 +374,34 @@ public sealed class MainForm : Form
 
     Controls.Add(layout);
     UpdateSideButtonColors();
-    Shown += async (_, _) => await RefreshWorkbooksAsync();
+    Shown += async (_, _) =>
+    {
+      EnsureResponsiveLayout(layout);
+      await RefreshWorkbooksAsync();
+    };
+    DpiChanged += (_, _) =>
+    {
+      if (CanUpdateUi) BeginInvoke(() => EnsureResponsiveLayout(layout));
+    };
+  }
+
+  private void EnsureResponsiveLayout(TableLayoutPanel layout)
+  {
+    if (IsDisposed || Disposing) return;
+
+    layout.AutoScrollMinSize = Size.Empty;
+    var preferred = layout.GetPreferredSize(Size.Empty);
+    var requiredClientSize = new Size(
+      Math.Max(760, preferred.Width),
+      Math.Max(370, preferred.Height));
+    layout.AutoScrollMinSize = requiredClientSize;
+    MinimumSize = SizeFromClientSize(requiredClientSize);
+    if (ClientSize.Width < requiredClientSize.Width || ClientSize.Height < requiredClientSize.Height)
+    {
+      ClientSize = new Size(
+        Math.Max(ClientSize.Width, requiredClientSize.Width),
+        Math.Max(ClientSize.Height, requiredClientSize.Height));
+    }
   }
 
   private static TableLayoutPanel CreateCard(int columnCount) => new()
@@ -2443,7 +2475,7 @@ public sealed class MainForm : Form
       : sequence;
     if (currentSequence == 0)
     {
-      statusLabel.Text = reason;
+      SetStatus(reason);
       return;
     }
 
@@ -2456,7 +2488,7 @@ public sealed class MainForm : Form
     if (clipboardRetryAttempt >= ClipboardRetryLimit)
     {
       clipboardRetryTimer.Stop();
-      statusLabel.Text = $"{reason} 再試行上限に達しました。再度キャプチャしてください。";
+      SetStatus($"{reason} 再試行上限に達しました。再度キャプチャしてください。");
       return;
     }
 
@@ -2464,7 +2496,7 @@ public sealed class MainForm : Form
     clipboardRetryTimer.Interval = Math.Min(1_200, 150 * (1 << (clipboardRetryAttempt - 1)));
     clipboardRetryTimer.Stop();
     clipboardRetryTimer.Start();
-    statusLabel.Text = $"{reason} 再試行します ({clipboardRetryAttempt}/{ClipboardRetryLimit})。";
+    SetStatus($"{reason} 再試行します ({clipboardRetryAttempt}/{ClipboardRetryLimit})。");
   }
 
   private void SetStatus(string message)
@@ -2472,6 +2504,7 @@ public sealed class MainForm : Form
     if (CanUpdateUi)
     {
       statusLabel.Text = message;
+      sideToolTip.SetToolTip(statusLabel, message);
     }
   }
 
