@@ -198,7 +198,7 @@ public sealed class MainForm : Form
       Padding = new Padding(14, 12, 14, 12),
       ColumnCount = 1,
       RowCount = 5,
-      AutoScroll = true,
+      AutoScroll = false,
     };
     layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     for (var row = 0; row < 5; row++)
@@ -376,6 +376,7 @@ public sealed class MainForm : Form
 
     Controls.Add(layout);
     UpdateSideButtonColors();
+    EnsureResponsiveLayout(layout);
     Shown += async (_, _) =>
     {
       EnsureResponsiveLayout(layout);
@@ -391,12 +392,11 @@ public sealed class MainForm : Form
   {
     if (IsDisposed || Disposing) return;
 
-    layout.AutoScrollMinSize = Size.Empty;
+    layout.PerformLayout();
     var preferred = layout.GetPreferredSize(Size.Empty);
     var requiredClientSize = new Size(
       Math.Max(760, preferred.Width),
       Math.Max(370, preferred.Height));
-    layout.AutoScrollMinSize = requiredClientSize;
     MinimumSize = SizeFromClientSize(requiredClientSize);
     if (ClientSize.Width < requiredClientSize.Width || ClientSize.Height < requiredClientSize.Height)
     {
