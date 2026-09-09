@@ -21,11 +21,13 @@ internal sealed class PreviewDialog : Form
     Size = new Size(900, 680);
     AutoScaleMode = AutoScaleMode.Dpi;
     Font = new Font("Meiryo UI", 9F);
+    UiTheme.StyleForm(this);
 
     var layout = new TableLayoutPanel
     {
       Dock = DockStyle.Fill,
       Padding = new Padding(12),
+      BackColor = UiTheme.Canvas,
       ColumnCount = 1,
       RowCount = 3,
     };
@@ -38,6 +40,9 @@ internal sealed class PreviewDialog : Form
     {
       AutoSize = true,
       Text = BuildContext(workbookLabel, worksheetName, side, analysis),
+      ForeColor = UiTheme.Text,
+      BackColor = UiTheme.SurfaceMuted,
+      Padding = new Padding(8),
     };
     layout.Controls.Add(context, 0, 0);
 
@@ -83,7 +88,7 @@ internal sealed class PreviewDialog : Form
     };
     foreach (var button in new[] { placeButton, editButton, closeButton })
     {
-      button.AutoSize = false;
+      UiTheme.StyleButton(button, Font, ReferenceEquals(button, placeButton) && canPlace);
       button.Size = new Size(130, 32);
       buttons.Controls.Add(button);
     }

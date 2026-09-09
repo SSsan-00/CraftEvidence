@@ -190,7 +190,7 @@ public sealed class MainForm : Form
     Size = new Size(760, 370);
     AutoScaleMode = AutoScaleMode.Dpi;
     Font = new Font("Meiryo UI", 9F);
-    BackColor = Color.FromArgb(245, 247, 250);
+    UiTheme.StyleForm(this);
 
     var layout = new TableLayoutPanel
     {
@@ -211,7 +211,7 @@ public sealed class MainForm : Form
       AutoSize = true,
       Text = "EvidenceCrafter",
       Font = new Font("Meiryo UI", 15F, FontStyle.Bold),
-      ForeColor = Color.FromArgb(31, 78, 121),
+      ForeColor = UiTheme.Text,
       Anchor = AnchorStyles.Left,
       Margin = new Padding(7, 2, 0, 8),
     }, 0, 0);
@@ -223,6 +223,7 @@ public sealed class MainForm : Form
     workbookRow.Controls.Add(CreateLabel("対象ブック"), 0, 0);
     workbookSelector.Dock = DockStyle.Fill;
     workbookSelector.DropDownStyle = ComboBoxStyle.DropDownList;
+    UiTheme.StyleComboBox(workbookSelector);
     workbookSelector.ItemHeight = 21;
     workbookSelector.Margin = new Padding(0);
     workbookSelector.DisplayMember = nameof(WorkbookIdentity.DisplayLabel);
@@ -319,6 +320,7 @@ public sealed class MainForm : Form
     targetCard.Controls.Add(CreateLabel("配置後"), 0, 2);
     advanceModeBox.Dock = DockStyle.Fill;
     advanceModeBox.DropDownStyle = ComboBoxStyle.DropDownList;
+    UiTheme.StyleComboBox(advanceModeBox);
     advanceModeBox.ItemHeight = 21;
     advanceModeBox.Margin = new Padding(0);
     advanceModeBox.Items.AddRange(["同じCaseの反対Side", "同じSideの次Case"]);
@@ -332,7 +334,7 @@ public sealed class MainForm : Form
     {
       AutoSize = true,
       Dock = DockStyle.Fill,
-      BackColor = Color.White,
+      BackColor = UiTheme.Surface,
       Padding = new Padding(10, 7, 10, 7),
       WrapContents = false,
       Margin = new Padding(0),
@@ -342,7 +344,7 @@ public sealed class MainForm : Form
     captureScreenButton.Width = 172;
     captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
     actions.Controls.Add(captureScreenButton);
-    actions.Controls.Add(new Label { AutoSize = true, Text = "履歴", Margin = new Padding(18, 7, 4, 0), ForeColor = Color.DimGray });
+    actions.Controls.Add(new Label { AutoSize = true, Text = "履歴", Margin = new Padding(18, 7, 4, 0), ForeColor = UiTheme.TextMuted });
     undoButton.Text = "元に戻す";
     StyleButton(undoButton);
     undoButton.Enabled = false;
@@ -360,7 +362,7 @@ public sealed class MainForm : Form
     {
       Height = 36,
       Dock = DockStyle.Fill,
-      BackColor = Color.FromArgb(234, 240, 247),
+      BackColor = UiTheme.SurfaceMuted,
       Padding = new Padding(10, 7, 10, 7),
       Margin = new Padding(0, 8, 0, 0),
     };
@@ -368,7 +370,7 @@ public sealed class MainForm : Form
     statusLabel.Dock = DockStyle.Fill;
     statusLabel.TextAlign = ContentAlignment.MiddleLeft;
     statusLabel.Text = "Ready";
-    statusLabel.ForeColor = Color.FromArgb(47, 79, 112);
+    statusLabel.ForeColor = UiTheme.TextMuted;
     statusPanel.Controls.Add(statusLabel);
     layout.Controls.Add(statusPanel, 0, 4);
 
@@ -408,27 +410,14 @@ public sealed class MainForm : Form
   {
     AutoSize = true,
     Dock = DockStyle.Fill,
-    BackColor = Color.White,
+    BackColor = UiTheme.Surface,
     Padding = new Padding(10, 8, 10, 8),
     ColumnCount = columnCount,
     RowCount = 3,
     Margin = new Padding(0),
   };
 
-  private void StyleButton(Button button, bool primary = false)
-  {
-    button.AutoSize = false;
-    button.Size = new Size(
-      Math.Max(64, TextRenderer.MeasureText(button.Text, Font).Width + 24),
-      28);
-    button.FlatStyle = FlatStyle.Flat;
-    button.FlatAppearance.BorderColor = primary ? Color.FromArgb(31, 112, 190) : Color.FromArgb(202, 210, 220);
-    button.FlatAppearance.BorderSize = 1;
-    button.BackColor = primary ? Color.FromArgb(31, 112, 190) : Color.White;
-    button.ForeColor = primary ? Color.White : Color.FromArgb(54, 65, 77);
-    button.Margin = new Padding(3, 0, 3, 0);
-    button.Padding = new Padding(6, 0, 6, 0);
-  }
+  private void StyleButton(Button button, bool primary = false) => UiTheme.StyleButton(button, Font, primary);
 
   private static void StyleSideButton(RadioButton button)
   {
@@ -437,16 +426,15 @@ public sealed class MainForm : Form
     button.Size = new Size(58, 28);
     button.TextAlign = ContentAlignment.MiddleCenter;
     button.FlatStyle = FlatStyle.Flat;
-    button.FlatAppearance.BorderColor = Color.FromArgb(202, 210, 220);
-    button.FlatAppearance.CheckedBackColor = Color.FromArgb(0, 91, 150);
-    button.FlatAppearance.MouseOverBackColor = Color.FromArgb(225, 237, 248);
+    button.FlatAppearance.BorderColor = UiTheme.Border;
+    button.FlatAppearance.CheckedBackColor = UiTheme.Primary;
+    button.FlatAppearance.MouseOverBackColor = UiTheme.SurfaceMuted;
     button.Margin = new Padding(0, 0, 4, 0);
   }
 
   private static void StyleTextBox(TextBox textBox)
   {
-    textBox.AutoSize = false;
-    textBox.Height = 28;
+    UiTheme.StyleTextBox(textBox);
     textBox.Margin = new Padding(0);
   }
 
@@ -459,11 +447,11 @@ public sealed class MainForm : Form
   private static void ApplySideButtonColor(RadioButton button)
   {
     var selected = button.Checked;
-    button.BackColor = selected ? Color.FromArgb(0, 91, 150) : Color.White;
-    button.ForeColor = selected ? Color.White : Color.FromArgb(54, 65, 77);
+    button.BackColor = selected ? UiTheme.Primary : UiTheme.Surface;
+    button.ForeColor = selected ? Color.White : UiTheme.Text;
     button.FlatAppearance.BorderColor = selected
-      ? Color.FromArgb(0, 70, 120)
-      : Color.FromArgb(202, 210, 220);
+      ? UiTheme.PrimaryHover
+      : UiTheme.Border;
   }
 
   private static Label CreateLabel(string text) => new()
@@ -471,6 +459,7 @@ public sealed class MainForm : Form
     AutoSize = true,
     Text = text,
     Font = new Font("Meiryo UI", 9F, FontStyle.Bold),
+    ForeColor = UiTheme.Text,
     Anchor = AnchorStyles.Left,
   };
 

@@ -23,6 +23,7 @@ internal sealed class ImageEditorDialog : Form
     Size = new Size(1000, 760);
     AutoScaleMode = AutoScaleMode.Dpi;
     Font = new Font("Meiryo UI", 9F);
+    UiTheme.StyleForm(this);
     KeyPreview = true;
 
     var toolStrip = new ToolStrip
@@ -30,6 +31,7 @@ internal sealed class ImageEditorDialog : Form
       GripStyle = ToolStripGripStyle.Hidden,
       Dock = DockStyle.Top,
       Padding = new Padding(6, 3, 6, 3),
+      BackColor = UiTheme.SurfaceMuted,
     };
 
     var rectangleButton = AddToolButton(toolStrip, "枠", ImageEditorTool.Rectangle);
@@ -82,12 +84,13 @@ internal sealed class ImageEditorDialog : Form
     };
     canvas.TextRequested += CanvasTextRequested;
 
-    var statusStrip = new StatusStrip { SizingGrip = false };
+    var statusStrip = new StatusStrip { SizingGrip = false, BackColor = UiTheme.SurfaceMuted };
     statusLabel = new ToolStripStatusLabel
     {
       Spring = true,
       TextAlign = ContentAlignment.MiddleLeft,
       Text = InstructionFor(ImageEditorTool.Rectangle),
+      ForeColor = UiTheme.TextMuted,
     };
     canvas.ActionRejected += (_, message) => statusLabel.Text = message;
     statusStrip.Items.Add(statusLabel);
@@ -112,7 +115,12 @@ internal sealed class ImageEditorDialog : Form
       AutoSize = true,
       FlowDirection = FlowDirection.RightToLeft,
       Padding = new Padding(8),
+      BackColor = UiTheme.Canvas,
     };
+    UiTheme.StyleButton(applyButton, Font, primary: true);
+    applyButton.Size = new Size(132, 32);
+    UiTheme.StyleButton(cancelButton, Font);
+    cancelButton.Size = new Size(108, 32);
     bottomPanel.Controls.Add(cancelButton);
     bottomPanel.Controls.Add(applyButton);
 
@@ -477,6 +485,7 @@ internal sealed class ImageTextInputDialog : Form
     MinimumSize = new Size(360, 160);
     AutoScaleMode = AutoScaleMode.Dpi;
     Font = new Font("Meiryo UI", 9F);
+    UiTheme.StyleForm(this);
     ShowInTaskbar = false;
 
     var label = new Label
@@ -485,6 +494,7 @@ internal sealed class ImageTextInputDialog : Form
       Dock = DockStyle.Top,
       AutoSize = true,
       Padding = new Padding(0, 0, 0, 6),
+      ForeColor = UiTheme.Text,
     };
     var okButton = new Button
     {
@@ -504,11 +514,16 @@ internal sealed class ImageTextInputDialog : Form
       AutoSize = true,
       FlowDirection = FlowDirection.RightToLeft,
       Padding = new Padding(0, 8, 0, 0),
+      BackColor = UiTheme.Canvas,
     };
+    UiTheme.StyleButton(okButton, Font, primary: true);
+    okButton.Size = new Size(92, 32);
+    UiTheme.StyleButton(cancelButton, Font);
+    cancelButton.Size = new Size(108, 32);
     buttons.Controls.Add(cancelButton);
     buttons.Controls.Add(okButton);
 
-    var layout = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
+    var layout = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = UiTheme.Canvas };
     layout.Controls.Add(textBox);
     layout.Controls.Add(label);
     layout.Controls.Add(buttons);
