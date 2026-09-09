@@ -334,7 +334,13 @@ public sealed class MainForm : Form
     captureScreenButton.MinimumSize = new Size(172, 32);
     captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
     actions.Controls.Add(captureScreenButton);
-    actions.Controls.Add(new Label { AutoSize = true, Text = "履歴", Margin = new Padding(18, 7, 4, 0), ForeColor = UiTheme.TextMuted });
+    actions.Controls.Add(new Panel
+    {
+      Width = 1,
+      Height = 20,
+      BackColor = UiTheme.Border,
+      Margin = new Padding(14, 6, 14, 6),
+    });
     undoButton.Text = "元に戻す";
     StyleButton(undoButton);
     undoButton.Enabled = false;
