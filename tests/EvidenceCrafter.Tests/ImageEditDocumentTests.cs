@@ -115,6 +115,33 @@ public sealed class ImageEditDocumentTests
     Assert.IsTrue(ContainsColor(result, Color.Purple));
   }
 
+  [TestMethod]
+  public void MoveText_RepositionsTextAndSupportsUndoRedo()
+  {
+    using var source = new Bitmap(240, 120);
+    using (var graphics = Graphics.FromImage(source))
+    {
+      graphics.Clear(Color.White);
+    }
+
+    using var document = new ImageEditDocument(source);
+    Assert.IsTrue(document.DrawText("label", new Point(8, 8), Color.Purple));
+    Assert.IsTrue(document.TryGetTextAt(new Point(8, 8), out var annotationId));
+
+    Assert.IsTrue(document.MoveText(annotationId, new Point(120, 60)));
+    Assert.IsFalse(document.TryGetTextAt(new Point(8, 8), out _));
+    Assert.IsTrue(document.TryGetTextAt(new Point(120, 60), out var movedId));
+    Assert.AreEqual(annotationId, movedId);
+
+    Assert.IsTrue(document.Undo());
+    Assert.IsTrue(document.TryGetTextAt(new Point(8, 8), out var restoredId));
+    Assert.AreEqual(annotationId, restoredId);
+
+    Assert.IsTrue(document.Redo());
+    Assert.IsTrue(document.TryGetTextAt(new Point(120, 60), out var redoneId));
+    Assert.AreEqual(annotationId, redoneId);
+  }
+
   private static bool ContainsColor(Bitmap image, Color expected)
   {
     for (var y = 0; y < image.Height; y++)

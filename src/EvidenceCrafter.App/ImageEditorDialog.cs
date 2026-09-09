@@ -37,6 +37,7 @@ internal sealed class ImageEditorDialog : Form
     var rectangleButton = AddToolButton(toolStrip, "枠", ImageEditorTool.Rectangle);
     AddToolButton(toolStrip, "矢印", ImageEditorTool.Arrow);
     AddToolButton(toolStrip, "テキスト", ImageEditorTool.Text);
+    AddToolButton(toolStrip, "移動", ImageEditorTool.MoveText);
     AddToolButton(toolStrip, "モザイク", ImageEditorTool.Mosaic);
     AddToolButton(toolStrip, "トリミング", ImageEditorTool.Crop);
     rectangleButton.Checked = true;
@@ -257,6 +258,7 @@ internal sealed class ImageEditorDialog : Form
     ImageEditorTool.Rectangle => "ドラッグした範囲へ枠を追加します。",
     ImageEditorTool.Arrow => "矢印の始点から終点までドラッグします。",
     ImageEditorTool.Text => "文字を追加する位置をクリックします。",
+    ImageEditorTool.MoveText => "テキストをクリックしてドラッグすると移動できます。",
     ImageEditorTool.Mosaic => "隠したい範囲をドラッグします。",
     ImageEditorTool.Crop => "残したい範囲をドラッグしてトリミングします。",
     _ => string.Empty,
@@ -268,6 +270,7 @@ internal enum ImageEditorTool
   Rectangle,
   Arrow,
   Text,
+  MoveText,
   Mosaic,
   Crop,
 }
@@ -278,6 +281,11 @@ internal sealed class ImageEditorCanvas : Control
   private readonly ImageEditDocument document;
   private Point dragStartClient;
   private Point dragCurrentClient;
+  private Guid? selectedTextId;
+  private Guid? movingTextId;
+  private Point textDragStartImage;
+  private Point textOriginalLocation;
+  private Point textPreviewLocation;
   private bool dragging;
 
   public ImageEditorCanvas(ImageEditDocument document)
@@ -312,7 +320,23 @@ internal sealed class ImageEditorCanvas : Control
     eventArgs.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
     eventArgs.Graphics.DrawImage(document.CurrentImage, imageBounds);
 
-    if (!dragging || Tool == ImageEditorTool.Text)
+    TextAnnotation? preview = null;
+    if (movingTextId is Guid movingId &&
+      !document.TryGetMovedTextAnnotation(movingId, textPreviewLocation, out preview))
+    {
+      movingTextId = null;
+    }
+
+    var savedState = eventArgs.Graphics.Save();
+    eventArgs.Graphics.TranslateTransform(imageBounds.X, imageBounds.Y);
+    eventArgs.Graphics.ScaleTransform(
+      imageBounds.Width / (float)document.Width,
+      imageBounds.Height / (float)document.Height);
+    document.DrawTextAnnotations(eventArgs.Graphics, movingTextId, preview);
+    DrawSelectedTextBounds(eventArgs.Graphics, preview);
+    eventArgs.Graphics.Restore(savedState);
+
+    if (!dragging || Tool is ImageEditorTool.Text or ImageEditorTool.MoveText)
     {
       return;
     }
@@ -352,6 +376,12 @@ internal sealed class ImageEditorCanvas : Control
       return;
     }
 
+    if (Tool == ImageEditorTool.MoveText)
+    {
+      BeginTextMove(eventArgs.Location);
+      return;
+    }
+
     dragging = true;
     dragStartClient = eventArgs.Location;
     dragCurrentClient = eventArgs.Location;
@@ -364,6 +394,16 @@ internal sealed class ImageEditorCanvas : Control
     base.OnMouseMove(eventArgs);
     if (!dragging)
     {
+      return;
+    }
+
+    if (movingTextId is not null)
+    {
+      var currentImagePoint = ToImagePoint(ClampToImageBounds(eventArgs.Location));
+      textPreviewLocation = new Point(
+        textOriginalLocation.X + currentImagePoint.X - textDragStartImage.X,
+        textOriginalLocation.Y + currentImagePoint.Y - textDragStartImage.Y);
+      Invalidate();
       return;
     }
 
@@ -382,6 +422,14 @@ internal sealed class ImageEditorCanvas : Control
     dragCurrentClient = ClampToImageBounds(eventArgs.Location);
     dragging = false;
     Capture = false;
+    if (movingTextId is Guid movingId)
+    {
+      movingTextId = null;
+      document.MoveText(movingId, textPreviewLocation);
+      Invalidate();
+      return;
+    }
+
     var start = ToImagePoint(dragStartClient);
     var end = ToImagePoint(dragCurrentClient);
     var changed = Tool switch
@@ -410,7 +458,51 @@ internal sealed class ImageEditorCanvas : Control
     }
 
     dragging = false;
+    movingTextId = null;
     Invalidate();
+  }
+
+  private void BeginTextMove(Point clientLocation)
+  {
+    var imageLocation = ToImagePoint(clientLocation);
+    if (!document.TryGetTextAt(imageLocation, out var annotationId) ||
+      !document.TryGetTextAnnotation(annotationId, out var annotation))
+    {
+      selectedTextId = null;
+      ActionRejected?.Invoke(this, "移動するテキストをクリックしてください。");
+      Invalidate();
+      return;
+    }
+
+    selectedTextId = annotationId;
+    movingTextId = annotationId;
+    textDragStartImage = imageLocation;
+    textOriginalLocation = annotation.Location;
+    textPreviewLocation = annotation.Location;
+    dragging = true;
+    Capture = true;
+    Invalidate();
+  }
+
+  private void DrawSelectedTextBounds(Graphics graphics, TextAnnotation? preview)
+  {
+    if (selectedTextId is not Guid selectedId)
+    {
+      return;
+    }
+
+    TextAnnotation? selected = preview?.Id == selectedId ? preview : null;
+    if (selected is null && !document.TryGetTextAnnotation(selectedId, out selected))
+    {
+      selectedTextId = null;
+      return;
+    }
+
+    using var pen = new Pen(Color.DeepSkyBlue, Math.Max(1F, Math.Min(document.Width, document.Height) / 500F))
+    {
+      DashStyle = DashStyle.Dash,
+    };
+    graphics.DrawRectangle(pen, selected.Bounds.X, selected.Bounds.Y, selected.Bounds.Width, selected.Bounds.Height);
   }
 
   private Rectangle GetImageBounds()
