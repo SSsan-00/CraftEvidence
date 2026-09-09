@@ -264,10 +264,10 @@ public sealed class MainForm : Form
       Margin = new Padding(0, 0, 0, 6),
       Padding = new Padding(0),
     };
-    newSideButton.Text = "New";
+    newSideButton.Text = "NEW";
     StyleSideButton(newSideButton);
     newSideButton.Checked = true;
-    oldSideButton.Text = "Old";
+    oldSideButton.Text = "OLD";
     StyleSideButton(oldSideButton);
     newSideButton.CheckedChanged += (_, _) =>
     {
@@ -429,9 +429,11 @@ public sealed class MainForm : Form
   private static void StyleSideButton(RadioButton button)
   {
     button.Appearance = Appearance.Button;
-    button.AutoSize = false;
-    button.Size = new Size(58, 28);
+    button.AutoSize = true;
+    button.MinimumSize = new Size(64, 32);
+    button.Padding = new Padding(12, 2, 12, 2);
     button.TextAlign = ContentAlignment.MiddleCenter;
+    button.UseCompatibleTextRendering = false;
     button.FlatStyle = FlatStyle.Flat;
     button.FlatAppearance.BorderColor = UiTheme.Border;
     button.FlatAppearance.CheckedBackColor = UiTheme.Primary;
