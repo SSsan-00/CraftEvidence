@@ -609,17 +609,17 @@ public sealed class ExcelSheetSnapshotService
           topLeft = GetRequiredProperty(shape, "TopLeftCell");
           bottomRight = GetRequiredProperty(shape, "BottomRightCell");
           var name = Convert.ToString(GetRequiredProperty(shape, "Name"), CultureInfo.CurrentCulture) ?? string.Empty;
-          var alternativeText = TryGetProperty(shape, "AlternativeText", out var text)
-            ? Convert.ToString(text, CultureInfo.InvariantCulture)
-            : null;
           var isManaged = ManagedShapeMetadata.IsManagedName(name) &&
-            ManagedShapeMetadata.TryParse(alternativeText, out _);
+            TryGetProperty(shape, "AlternativeText", out var text) &&
+            ManagedShapeMetadata.TryParse(Convert.ToString(text, CultureInfo.InvariantCulture), out _);
+          var start = ReadShapeCellReference(topLeft);
+          var end = ReadShapeCellReference(bottomRight);
           result.Add(new SnapshotShape(
             name,
-            ReadInt(topLeft, "Row"),
-            ReadInt(bottomRight, "Row"),
-            ReadInt(topLeft, "Column"),
-            ReadInt(bottomRight, "Column"),
+            start.Row,
+            end.Row,
+            start.Column,
+            end.Column,
             isManaged));
         }
         finally
@@ -644,58 +644,74 @@ public sealed class ExcelSheetSnapshotService
     int lastRow)
   {
     var result = new Dictionary<int, double>();
-    object? firstCell = null;
-    object? lastCell = null;
+    ReadRowHeightBlock(worksheet, firstRow, lastRow, result);
+    return result;
+  }
+
+  private static void ReadRowHeightBlock(
+    object worksheet,
+    int firstRow,
+    int lastRow,
+    Dictionary<int, double> result)
+  {
     object? range = null;
     try
     {
-      firstCell = GetRequiredProperty(worksheet, "Cells", firstRow, 1);
-      lastCell = GetRequiredProperty(worksheet, "Cells", lastRow, 1);
-      range = GetRequiredProperty(worksheet, "Range", firstCell, lastCell);
+      range = GetRequiredProperty(worksheet, "Range", $"A{firstRow}:A{lastRow}");
+      var totalHeight = Convert.ToDouble(GetRequiredProperty(range, "Height"), CultureInfo.InvariantCulture);
+      if (totalHeight == 0)
+      {
+        return;
+      }
+      if (firstRow == lastRow)
+      {
+        if (double.IsFinite(totalHeight) && totalHeight > 0)
+        {
+          result[firstRow] = totalHeight;
+        }
+        return;
+      }
+
       if (TryGetProperty(range, "RowHeight", out var uniformValue) &&
         uniformValue is not null && uniformValue is not DBNull)
       {
         var uniformHeight = Convert.ToDouble(uniformValue, CultureInfo.InvariantCulture);
-        if (double.IsFinite(uniformHeight) && uniformHeight > 0)
+        var rowCount = checked(lastRow - firstRow + 1);
+        if (double.IsFinite(uniformHeight) && uniformHeight > 0 &&
+          double.IsFinite(totalHeight) &&
+          Math.Abs(totalHeight - (uniformHeight * rowCount)) <= Math.Max(0.01, rowCount * 0.001))
         {
           for (var row = firstRow; row <= lastRow; row++)
           {
             result[row] = uniformHeight;
           }
-          return result;
+          return;
         }
       }
     }
     catch (Exception exception) when (IsAutomationFailure(exception))
     {
-      // Mixed row heights and transient bulk-property failures use the proven per-row path below.
+      if (firstRow == lastRow)
+      {
+        object? cell = null;
+        try
+        {
+          cell = GetRequiredProperty(worksheet, "Cells", firstRow, 1);
+          var height = Convert.ToDouble(GetRequiredProperty(cell, "Height"), CultureInfo.InvariantCulture);
+          if (double.IsFinite(height) && height > 0) result[firstRow] = height;
+        }
+        finally { ComRelease.Release(cell); }
+        return;
+      }
     }
     finally
     {
       ComRelease.Release(range);
-      ComRelease.Release(lastCell);
-      ComRelease.Release(firstCell);
     }
 
-    for (var row = firstRow; row <= lastRow; row++)
-    {
-      object? cell = null;
-      try
-      {
-        cell = GetRequiredProperty(worksheet, "Cells", row, 1);
-        var height = Convert.ToDouble(GetRequiredProperty(cell, "Height"), CultureInfo.InvariantCulture);
-        if (double.IsFinite(height) && height > 0)
-        {
-          result[row] = height;
-        }
-      }
-      finally
-      {
-        ComRelease.Release(cell);
-      }
-    }
-
-    return result;
+    var middleRow = firstRow + ((lastRow - firstRow) / 2);
+    ReadRowHeightBlock(worksheet, firstRow, middleRow, result);
+    ReadRowHeightBlock(worksheet, middleRow + 1, lastRow, result);
   }
 
   private static IReadOnlyDictionary<int, double> ReadColumnWidths(
@@ -827,6 +843,28 @@ public sealed class ExcelSheetSnapshotService
     {
       ComRelease.Release(range);
     }
+  }
+
+  internal static CellReference ReadShapeCellReference(object cell)
+  {
+    try
+    {
+      // Absolute R1C1 returns both coordinates in one COM call, independent of Excel's display style.
+      if (InvokeProperty(cell, "Address", true, true, -4150, false) is string address &&
+        address.StartsWith('R') && address.IndexOf('C') is var columnMarker && columnMarker > 1 &&
+        int.TryParse(address.AsSpan(1, columnMarker - 1), NumberStyles.None, CultureInfo.InvariantCulture, out var row) &&
+        int.TryParse(address.AsSpan(columnMarker + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var column) &&
+        row is >= 1 and <= ExcelWorksheetLimits.MaximumRow &&
+        column is >= 1 and <= ExcelWorksheetLimits.MaximumColumn)
+      {
+        return new CellReference(row, column);
+      }
+    }
+    catch (Exception exception) when (IsAutomationFailure(exception))
+    {
+      // Older automation providers can reject the indexed Address property; retain the original reads.
+    }
+    return new CellReference(ReadInt(cell, "Row"), ReadInt(cell, "Column"));
   }
 
   private static string ColumnName(int column)

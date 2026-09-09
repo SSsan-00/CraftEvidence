@@ -16,13 +16,23 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
 {
   [TestMethod]
   public void DiscoverAndFocus_WithRealTemporaryWorkbook_VerifiesIdentityAndActiveCell() =>
-    RunSupervisedScenario(performanceOnly: false);
+    RunSupervisedScenario(Scenario.Operations);
 
   [TestMethod]
   public void SnapshotReads_WithRealTemporaryWorkbook_PreserveBoundariesAndWidths() =>
-    RunSupervisedScenario(performanceOnly: true);
+    RunSupervisedScenario(Scenario.SnapshotReads);
 
-  private static void RunSupervisedScenario(bool performanceOnly)
+  [TestMethod]
+  public void RowHeightReads_WithRealTemporaryWorkbook_MatchIndividualCells() =>
+    RunSupervisedScenario(Scenario.RowHeights);
+
+  [TestMethod]
+  public void PlacementAnalysis_WithRealTemporaryWorkbook_ReportsTimings() =>
+    RunSupervisedScenario(Scenario.PlacementAnalysis);
+
+  private enum Scenario { Operations, SnapshotReads, RowHeights, PlacementAnalysis }
+
+  private static void RunSupervisedScenario(Scenario scenario)
   {
     Exception? failure = null;
     string? inconclusiveReason = null;
@@ -32,7 +42,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
     {
       try
       {
-        RunRealWorkbookScenario(supervisor, performanceOnly);
+        RunRealWorkbookScenario(supervisor, scenario);
       }
       catch (OfficeUnavailableException exception)
       {
@@ -84,7 +94,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
     }
   }
 
-  private static void RunRealWorkbookScenario(ScenarioSupervisor supervisor, bool performanceOnly)
+  private static void RunRealWorkbookScenario(ScenarioSupervisor supervisor, Scenario scenario)
   {
     T RunExcelSta<T>(Func<T> action) => RunOnSta(
       action,
@@ -156,9 +166,20 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
       SetProperty(otherWorksheet, "Name", "OtherTarget");
       _ = InvokeMethod(otherWorkbook, "SaveAs", otherWorkbookPath);
 
-      if (performanceOnly)
+      if (scenario == Scenario.SnapshotReads)
       {
         VerifySnapshotReadPerformance(otherWorksheet);
+      }
+      else if (scenario == Scenario.RowHeights)
+      {
+        VerifyRowHeightReadPerformance(otherWorksheet);
+      }
+      else if (scenario == Scenario.PlacementAnalysis)
+      {
+        var discovery = RunExcelSta(() => new ExcelSessionCatalog().Discover());
+        var identity = discovery.Workbooks.Single(item =>
+          string.Equals(item.FullPath, otherWorkbookPath, StringComparison.OrdinalIgnoreCase));
+        VerifyPlacementAnalysisPerformance(otherWorksheet, identity);
       }
       else
       {
