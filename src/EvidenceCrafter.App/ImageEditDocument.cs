@@ -88,7 +88,7 @@ internal sealed class ImageEditDocument : IDisposable
         clipped.Y + inset,
         Math.Max(0F, clipped.Width - stroke),
         Math.Max(0F, clipped.Height - stroke));
-    });
+    }, preserveTextAnnotations: true);
   }
 
   public bool DrawArrow(Point start, Point end, Color? color = null)
@@ -108,7 +108,7 @@ internal sealed class ImageEditDocument : IDisposable
       using var arrowCap = new AdjustableArrowCap(5F, 5F, true);
       pen.CustomEndCap = arrowCap;
       graphics.DrawLine(pen, start, end);
-    });
+    }, preserveTextAnnotations: true);
   }
 
   public bool DrawText(string text, Point location, Color? color = null)
@@ -392,14 +392,14 @@ internal sealed class ImageEditDocument : IDisposable
     return Rectangle.FromLTRB(left, top, right, bottom);
   }
 
-  private bool Edit(Action<Bitmap> draw)
+  private bool Edit(Action<Bitmap> draw, bool preserveTextAnnotations = false)
   {
     ObjectDisposedException.ThrowIf(disposed, this);
-    var next = RenderCurrent();
+    var next = preserveTextAnnotations ? CopyBitmap(current) : RenderCurrent();
     try
     {
       draw(next);
-      Commit(next, nextStateId++, []);
+      Commit(next, nextStateId++, preserveTextAnnotations ? textAnnotations : []);
       next = null!;
       return true;
     }

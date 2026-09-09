@@ -142,6 +142,22 @@ public sealed class ImageEditDocumentTests
     Assert.AreEqual(annotationId, redoneId);
   }
 
+  [TestMethod]
+  public void FrameAndArrow_DoNotPreventTextFromBeingMoved()
+  {
+    using var source = new Bitmap(240, 120);
+    using var document = new ImageEditDocument(source);
+    Assert.IsTrue(document.DrawText("label", new Point(8, 8)));
+    Assert.IsTrue(document.TryGetTextAt(new Point(8, 8), out var annotationId));
+
+    Assert.IsTrue(document.DrawRectangle(new Rectangle(80, 10, 60, 40)));
+    Assert.IsTrue(document.DrawArrow(new Point(80, 80), new Point(160, 80)));
+
+    Assert.IsTrue(document.MoveText(annotationId, new Point(120, 50)));
+    Assert.IsTrue(document.TryGetTextAt(new Point(120, 50), out var movedId));
+    Assert.AreEqual(annotationId, movedId);
+  }
+
   private static bool ContainsColor(Bitmap image, Color expected)
   {
     for (var y = 0; y < image.Height; y++)
