@@ -88,6 +88,7 @@ public sealed class MainForm : Form
     caseMaintenanceService = new ExcelCaseMaintenanceService(rowMutationService);
     replacementLayoutService = new ExcelManagedReplacementLayoutService(rowMutationService);
     settings = settingsStore.Load();
+    UiTheme.SetDarkMode(settings.DarkMode);
     clipboardRetryTimer.Tick += (_, _) =>
     {
       clipboardRetryTimer.Stop();
@@ -204,24 +205,45 @@ public sealed class MainForm : Form
       RowCount = 5,
       AutoScroll = false,
     };
+    UiTheme.StyleCanvas(layout);
     layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     for (var row = 0; row < 5; row++)
     {
       layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
 
-    var header = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2 };
+    var header = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 3 };
+    UiTheme.StyleCanvas(header);
     header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
     header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-    header.Controls.Add(new Label
+    header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    var title = new Label
     {
       AutoSize = true,
       Text = "EvidenceCrafter",
       Font = new Font("Meiryo UI", 15F, FontStyle.Bold),
-      ForeColor = UiTheme.Text,
       Anchor = AnchorStyles.Left,
       Margin = new Padding(7, 2, 0, 8),
-    }, 0, 0);
+    };
+    UiTheme.StyleText(title);
+    header.Controls.Add(title, 0, 0);
+    var darkMode = new CheckBox
+    {
+      Text = "ダークモード", AutoSize = true, Anchor = AnchorStyles.Right,
+      Checked = settings.DarkMode, Margin = new Padding(8, 0, 7, 8),
+    };
+    UiTheme.StyleText(darkMode);
+    darkMode.CheckedChanged += (_, _) =>
+    {
+      UiTheme.SetDarkMode(darkMode.Checked);
+      settings = settings with { DarkMode = darkMode.Checked };
+      UiTheme.Refresh(this);
+      UpdateSideButtonColors();
+      try { settingsStore.Save(settings); }
+      catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+      { SetStatus($"ダークモード設定を保存できません: {exception.Message}"); }
+    };
+    header.Controls.Add(darkMode, 1, 0);
     var topmost = new CheckBox
     {
       Text = "常に最前面", AutoSize = true, Anchor = AnchorStyles.Right,
@@ -236,7 +258,8 @@ public sealed class MainForm : Form
       catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
       { SetStatus($"最前面設定を保存できません: {exception.Message}"); }
     };
-    header.Controls.Add(topmost, 1, 0);
+    UiTheme.StyleText(topmost);
+    header.Controls.Add(topmost, 2, 0);
     layout.Controls.Add(header, 0, 0);
 
     var workbookRow = CreateCard(3);
@@ -280,6 +303,7 @@ public sealed class MainForm : Form
       Margin = new Padding(0),
       Padding = new Padding(0),
     };
+    UiTheme.StyleSurface(sidePanel);
     newSideButton.Text = "NEW";
     StyleSideButton(newSideButton);
     newSideButton.Checked = true;
@@ -347,23 +371,24 @@ public sealed class MainForm : Form
     {
       AutoSize = true,
       Dock = DockStyle.Fill,
-      BackColor = UiTheme.Surface,
       Padding = new Padding(10, 7, 10, 7),
       WrapContents = false,
       Margin = new Padding(0),
     };
+    UiTheme.StyleSurface(actions);
     captureScreenButton.Text = "画像をキャプチャ";
     StyleButton(captureScreenButton, primary: true);
     captureScreenButton.MinimumSize = new Size(172, 32);
     captureScreenButton.Click += async (_, _) => await CaptureScreenAsync();
     actions.Controls.Add(captureScreenButton);
-    actions.Controls.Add(new Panel
+    var actionSeparator = new Panel
     {
       Width = 1,
       Height = 20,
-      BackColor = UiTheme.Border,
       Margin = new Padding(14, 6, 14, 6),
-    });
+    };
+    UiTheme.StyleBorder(actionSeparator);
+    actions.Controls.Add(actionSeparator);
     undoButton.Text = "元に戻す";
     StyleButton(undoButton);
     undoButton.Enabled = false;
@@ -381,15 +406,15 @@ public sealed class MainForm : Form
     {
       Height = 36,
       Dock = DockStyle.Fill,
-      BackColor = UiTheme.SurfaceMuted,
       Padding = new Padding(10, 7, 10, 7),
       Margin = new Padding(0, 8, 0, 0),
     };
+    UiTheme.StyleSurface(statusPanel, muted: true);
     statusLabel.AutoEllipsis = true;
     statusLabel.Dock = DockStyle.Fill;
     statusLabel.TextAlign = ContentAlignment.MiddleLeft;
     statusLabel.Text = "Ready";
-    statusLabel.ForeColor = UiTheme.TextMuted;
+    UiTheme.StyleText(statusLabel, muted: true);
     statusPanel.Controls.Add(statusLabel);
     layout.Controls.Add(statusPanel, 0, 4);
 
@@ -425,42 +450,38 @@ public sealed class MainForm : Form
     }
   }
 
-  private static TableLayoutPanel CreateCard(int columnCount) => new()
+  private static TableLayoutPanel CreateCard(int columnCount)
   {
-    AutoSize = true,
-    Dock = DockStyle.Fill,
-    BackColor = UiTheme.Surface,
-    Padding = new Padding(10, 8, 10, 8),
-    ColumnCount = columnCount,
-    RowCount = 3,
-    Margin = new Padding(0),
-  };
+    var card = new TableLayoutPanel
+    {
+      AutoSize = true,
+      Dock = DockStyle.Fill,
+      Padding = new Padding(10, 8, 10, 8),
+      ColumnCount = columnCount,
+      RowCount = 3,
+      Margin = new Padding(0),
+    };
+    UiTheme.StyleSurface(card);
+    return card;
+  }
 
-  private static FlowLayoutPanel CreateTargetRow() => new()
+  private static FlowLayoutPanel CreateTargetRow()
   {
-    AutoSize = true,
-    Dock = DockStyle.Fill,
-    WrapContents = false,
-    Margin = new Padding(0, 0, 0, 6),
-    Padding = new Padding(0),
-  };
+    var row = new FlowLayoutPanel
+    {
+      AutoSize = true,
+      Dock = DockStyle.Fill,
+      WrapContents = false,
+      Margin = new Padding(0, 0, 0, 6),
+      Padding = new Padding(0),
+    };
+    UiTheme.StyleSurface(row);
+    return row;
+  }
 
   private void StyleButton(Button button, bool primary = false) => UiTheme.StyleButton(button, Font, primary);
 
-  private static void StyleSideButton(RadioButton button)
-  {
-    button.Appearance = Appearance.Button;
-    button.AutoSize = true;
-    button.MinimumSize = new Size(64, 32);
-    button.Padding = new Padding(12, 2, 12, 2);
-    button.TextAlign = ContentAlignment.MiddleCenter;
-    button.UseCompatibleTextRendering = false;
-    button.FlatStyle = FlatStyle.Flat;
-    button.FlatAppearance.BorderColor = UiTheme.Border;
-    button.FlatAppearance.CheckedBackColor = UiTheme.Primary;
-    button.FlatAppearance.MouseOverBackColor = UiTheme.SurfaceMuted;
-    button.Margin = new Padding(0, 0, 4, 0);
-  }
+  private static void StyleSideButton(RadioButton button) => UiTheme.StyleSideButton(button);
 
   private static void StyleTextBox(TextBox textBox)
   {
@@ -489,17 +510,18 @@ public sealed class MainForm : Form
     var font = new Font("Meiryo UI", 9F, FontStyle.Bold);
     var minimumWidth = string.Equals(text, "対象ブック", StringComparison.Ordinal) ? 96 : 64;
     var width = Math.Max(minimumWidth, TextRenderer.MeasureText(text, font).Width + 16);
-    return new Label
+    var label = new Label
     {
       AutoSize = false,
       Size = new Size(width, 32),
       Text = text,
       Font = font,
-      ForeColor = UiTheme.Text,
       TextAlign = ContentAlignment.MiddleLeft,
       UseCompatibleTextRendering = false,
       Anchor = AnchorStyles.Left,
     };
+    UiTheme.StyleText(label);
+    return label;
   }
 
   private async Task RefreshPlacementContextAsync(bool force = false)

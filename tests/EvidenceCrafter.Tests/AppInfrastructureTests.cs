@@ -49,6 +49,7 @@ public sealed class AppInfrastructureTests
       DiagnosticLoggingEnabled = false,
       GlobalShortcutEnabled = false,
       AlwaysOnTop = true,
+      DarkMode = true,
     });
 
     var loaded = store.Load();
@@ -56,6 +57,7 @@ public sealed class AppInfrastructureTests
     Assert.IsFalse(loaded.DiagnosticLoggingEnabled);
     Assert.IsFalse(loaded.GlobalShortcutEnabled);
     Assert.IsTrue(loaded.AlwaysOnTop);
+    Assert.IsTrue(loaded.DarkMode);
     var savedJson = File.ReadAllText(path);
     Assert.IsFalse(savedJson.Contains("Workbook", StringComparison.Ordinal));
     Assert.IsFalse(savedJson.Contains("Side", StringComparison.Ordinal));

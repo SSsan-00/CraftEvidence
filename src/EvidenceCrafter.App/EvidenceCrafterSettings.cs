@@ -13,6 +13,8 @@ internal sealed record EvidenceCrafterSettings
 
   public bool AlwaysOnTop { get; init; }
 
+  public bool DarkMode { get; init; }
+
   public PlacementAdvanceMode AdvanceMode { get; init; } = PlacementAdvanceMode.SameCaseThenNext;
 
   internal EvidenceCrafterSettings Normalize() => this with
