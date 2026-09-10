@@ -67,6 +67,7 @@ internal static class UiTheme
     button.Padding = new Padding(12, 2, 12, 2);
     button.TextAlign = ContentAlignment.MiddleCenter;
     button.UseCompatibleTextRendering = false;
+    button.Paint += PaintDisabledButtonText;
     Apply(button, role);
   }
 
@@ -137,6 +138,25 @@ internal static class UiTheme
   {
     button.BackColor = primary ? Primary : SurfaceMuted;
     button.ForeColor = primary ? Color.White : Text;
+  }
+
+  private static void PaintDisabledButtonText(object? sender, PaintEventArgs eventArgs)
+  {
+    if (!DarkMode || sender is not Button { Enabled: false } button || string.IsNullOrEmpty(button.Text)) return;
+
+    var bounds = Rectangle.FromLTRB(
+      button.Padding.Left,
+      button.Padding.Top,
+      button.ClientSize.Width - button.Padding.Right,
+      button.ClientSize.Height - button.Padding.Bottom);
+    TextRenderer.DrawText(
+      eventArgs.Graphics,
+      button.Text,
+      button.Font,
+      bounds,
+      TextMuted,
+      TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+      TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
   }
 }
 
