@@ -37,7 +37,6 @@ internal sealed class ImageEditorDialog : Form
     var rectangleButton = AddToolButton(toolStrip, "枠", ImageEditorTool.Rectangle);
     AddToolButton(toolStrip, "矢印", ImageEditorTool.Arrow);
     AddToolButton(toolStrip, "テキスト", ImageEditorTool.Text);
-    AddToolButton(toolStrip, "移動", ImageEditorTool.MoveText);
     AddToolButton(toolStrip, "モザイク", ImageEditorTool.Mosaic);
     AddToolButton(toolStrip, "トリミング", ImageEditorTool.Crop);
     rectangleButton.Checked = true;
@@ -84,13 +83,19 @@ internal sealed class ImageEditorDialog : Form
       AccessibleName = "画像編集キャンバス",
     };
     canvas.TextRequested += CanvasTextRequested;
+    canvas.TextEditRequested += (_, annotationId) =>
+    {
+      if (!document.TryGetTextAnnotation(annotationId, out var annotation)) return;
+      using var dialog = new ImageTextInputDialog(annotation.Text);
+      if (dialog.ShowDialog(this) == DialogResult.OK) document.UpdateText(annotationId, dialog.EnteredText);
+    };
 
     var statusStrip = new StatusStrip { SizingGrip = false, BackColor = UiTheme.SurfaceMuted };
     statusLabel = new ToolStripStatusLabel
     {
       Spring = true,
       TextAlign = ContentAlignment.MiddleLeft,
-      Text = InstructionFor(ImageEditorTool.Rectangle),
+      Text = InstructionFor(ImageEditorTool.Rectangle) + " テキストはドラッグで移動・ダブルクリックで編集・×で削除。",
       ForeColor = UiTheme.TextMuted,
     };
     canvas.ActionRejected += (_, message) => statusLabel.Text = message;
@@ -142,6 +147,14 @@ internal sealed class ImageEditorDialog : Form
 
   protected override bool ProcessCmdKey(ref Message message, Keys keyData)
   {
+    if (keyData == Keys.Enter)
+    {
+      if (!EnterShortcut.IsRepeat(message)) AcceptButton?.PerformClick();
+      return true;
+    }
+    if (keyData == Keys.Escape && canvas.CancelDrag()) return true;
+    if (keyData == Keys.Delete && canvas.DeleteSelectedText()) return true;
+    if (keyData == Keys.F2 && canvas.EditSelectedText()) return true;
     if (keyData == (Keys.Control | Keys.Z))
     {
       document.Undo();
@@ -196,7 +209,7 @@ internal sealed class ImageEditorDialog : Form
     }
 
     canvas.Tool = tool;
-    statusLabel.Text = InstructionFor(tool);
+    statusLabel.Text = InstructionFor(tool) + " テキストはドラッグで移動・ダブルクリックで編集・×で削除。";
   }
 
   private void CanvasTextRequested(object? sender, ImageTextRequestedEventArgs eventArgs)
@@ -258,7 +271,6 @@ internal sealed class ImageEditorDialog : Form
     ImageEditorTool.Rectangle => "ドラッグした範囲へ枠を追加します。",
     ImageEditorTool.Arrow => "矢印の始点から終点までドラッグします。",
     ImageEditorTool.Text => "文字を追加する位置をクリックします。",
-    ImageEditorTool.MoveText => "テキストをクリックしてドラッグすると移動できます。",
     ImageEditorTool.Mosaic => "隠したい範囲をドラッグします。",
     ImageEditorTool.Crop => "残したい範囲をドラッグしてトリミングします。",
     _ => string.Empty,
@@ -270,7 +282,6 @@ internal enum ImageEditorTool
   Rectangle,
   Arrow,
   Text,
-  MoveText,
   Mosaic,
   Crop,
 }
@@ -286,6 +297,7 @@ internal sealed class ImageEditorCanvas : Control
   private Point textDragStartImage;
   private Point textOriginalLocation;
   private Point textPreviewLocation;
+  private bool textDragThresholdPassed;
   private bool dragging;
 
   public ImageEditorCanvas(ImageEditDocument document)
@@ -295,9 +307,13 @@ internal sealed class ImageEditorCanvas : Control
     BackColor = Color.FromArgb(32, 32, 32);
     Cursor = Cursors.Cross;
     SetStyle(ControlStyles.ResizeRedraw, true);
+    SetStyle(ControlStyles.Selectable, true);
+    TabStop = true;
+    AccessibleDescription = "テキストを選択後、F2で編集、Deleteまたは右上の×で削除。ドラッグで移動。";
   }
 
   public event EventHandler<ImageTextRequestedEventArgs>? TextRequested;
+  public event EventHandler<Guid>? TextEditRequested;
 
   public event EventHandler<string>? ActionRejected;
 
@@ -335,8 +351,16 @@ internal sealed class ImageEditorCanvas : Control
     document.DrawTextAnnotations(eventArgs.Graphics, movingTextId, preview);
     DrawSelectedTextBounds(eventArgs.Graphics, preview);
     eventArgs.Graphics.Restore(savedState);
+    var deleteBounds = GetDeleteBounds();
+    if (!deleteBounds.IsEmpty)
+    {
+      using var brush = new SolidBrush(Color.Firebrick);
+      eventArgs.Graphics.FillRectangle(brush, deleteBounds);
+      TextRenderer.DrawText(eventArgs.Graphics, "×", Font, deleteBounds, Color.White,
+        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+    }
 
-    if (!dragging || Tool is ImageEditorTool.Text or ImageEditorTool.MoveText)
+    if (!dragging || movingTextId is not null || Tool is ImageEditorTool.Text)
     {
       return;
     }
@@ -365,20 +389,34 @@ internal sealed class ImageEditorCanvas : Control
   protected override void OnMouseDown(MouseEventArgs eventArgs)
   {
     base.OnMouseDown(eventArgs);
+    Focus();
+    if (eventArgs.Button == MouseButtons.Left && GetDeleteBounds().Contains(eventArgs.Location) && selectedTextId is Guid deleteId)
+    {
+      document.DeleteText(deleteId);
+      selectedTextId = null;
+      Invalidate();
+      return;
+    }
     if (eventArgs.Button != MouseButtons.Left || !GetImageBounds().Contains(eventArgs.Location))
     {
       return;
     }
 
+    if (document.TryGetTextAt(ToImagePoint(eventArgs.Location), out var textId))
+    {
+      selectedTextId = textId;
+      if (eventArgs.Clicks == 2)
+      {
+        CancelDrag();
+        TextEditRequested?.Invoke(this, textId);
+      }
+      else BeginTextMove(eventArgs.Location);
+      return;
+    }
+    selectedTextId = null;
     if (Tool == ImageEditorTool.Text)
     {
       TextRequested?.Invoke(this, new ImageTextRequestedEventArgs(ToImagePoint(eventArgs.Location)));
-      return;
-    }
-
-    if (Tool == ImageEditorTool.MoveText)
-    {
-      BeginTextMove(eventArgs.Location);
       return;
     }
 
@@ -399,6 +437,9 @@ internal sealed class ImageEditorCanvas : Control
 
     if (movingTextId is not null)
     {
+      if (!textDragThresholdPassed && Math.Abs(eventArgs.X - dragStartClient.X) < SystemInformation.DragSize.Width / 2 &&
+          Math.Abs(eventArgs.Y - dragStartClient.Y) < SystemInformation.DragSize.Height / 2) return;
+      textDragThresholdPassed = true;
       var currentImagePoint = ToImagePoint(ClampToImageBounds(eventArgs.Location));
       textPreviewLocation = new Point(
         textOriginalLocation.X + currentImagePoint.X - textDragStartImage.X,
@@ -419,6 +460,7 @@ internal sealed class ImageEditorCanvas : Control
       return;
     }
 
+    if (movingTextId is not null) OnMouseMove(eventArgs);
     dragCurrentClient = ClampToImageBounds(eventArgs.Location);
     dragging = false;
     Capture = false;
@@ -476,12 +518,53 @@ internal sealed class ImageEditorCanvas : Control
 
     selectedTextId = annotationId;
     movingTextId = annotationId;
+    textDragThresholdPassed = false;
+    dragStartClient = clientLocation;
     textDragStartImage = imageLocation;
     textOriginalLocation = annotation.Location;
     textPreviewLocation = annotation.Location;
     dragging = true;
     Capture = true;
     Invalidate();
+  }
+
+  internal bool CancelDrag()
+  {
+    if (!dragging) return false;
+    dragging = false;
+    movingTextId = null;
+    Capture = false;
+    Invalidate();
+    return true;
+  }
+
+  internal bool DeleteSelectedText()
+  {
+    if (selectedTextId is not Guid id) return false;
+    CancelDrag();
+    selectedTextId = null;
+    var deleted = document.DeleteText(id);
+    Invalidate();
+    return deleted;
+  }
+
+  internal bool EditSelectedText()
+  {
+    if (selectedTextId is not Guid id || !document.TryGetTextAnnotation(id, out _)) return false;
+    CancelDrag();
+    TextEditRequested?.Invoke(this, id);
+    return true;
+  }
+
+  private Rectangle GetDeleteBounds()
+  {
+    if (selectedTextId is not Guid id || !document.TryGetTextAnnotation(id, out var annotation)) return Rectangle.Empty;
+    if (movingTextId == id && document.TryGetMovedTextAnnotation(id, textPreviewLocation, out var preview)) annotation = preview;
+    var image = GetImageBounds();
+    var size = Math.Max(20, (int)(22 * DeviceDpi / 96F));
+    var x = image.X + (int)(annotation.Bounds.Right * image.Width / document.Width);
+    var y = image.Y + (int)(annotation.Bounds.Top * image.Height / document.Height) - size;
+    return new Rectangle(Math.Clamp(x, 0, Math.Max(0, Width - size)), Math.Clamp(y, 0, Math.Max(0, Height - size)), size, size);
   }
 
   private void DrawSelectedTextBounds(Graphics graphics, TextAnnotation? preview)
@@ -565,13 +648,15 @@ internal sealed class ImageTextInputDialog : Form
   {
     Dock = DockStyle.Fill,
     Multiline = true,
+    AcceptsReturn = true,
     ScrollBars = ScrollBars.Vertical,
     MaxLength = 500,
   };
 
-  public ImageTextInputDialog()
+  public ImageTextInputDialog(string? existingText = null)
   {
-    Text = "テキストを追加";
+    Text = existingText is null ? "テキストを追加" : "テキストを編集";
+    textBox.Text = existingText ?? string.Empty;
     StartPosition = FormStartPosition.CenterParent;
     ClientSize = new Size(440, 180);
     MinimumSize = new Size(360, 160);
@@ -590,7 +675,7 @@ internal sealed class ImageTextInputDialog : Form
     };
     var okButton = new Button
     {
-      Text = "追加",
+      Text = existingText is null ? "追加" : "変更",
       AutoSize = true,
       DialogResult = DialogResult.OK,
     };
@@ -621,6 +706,11 @@ internal sealed class ImageTextInputDialog : Form
     layout.Controls.Add(buttons);
     Controls.Add(layout);
     AcceptButton = okButton;
+    FormClosing += (_, args) =>
+    {
+      if (DialogResult == DialogResult.OK && string.IsNullOrWhiteSpace(textBox.Text))
+      { args.Cancel = true; textBox.Focus(); }
+    };
     CancelButton = cancelButton;
   }
 

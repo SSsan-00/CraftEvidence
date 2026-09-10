@@ -158,6 +158,74 @@ public sealed class ImageEditDocumentTests
     Assert.AreEqual(annotationId, movedId);
   }
 
+  [TestMethod]
+  public void EditAndDeleteText_PreserveIdentityAndUndoRedo()
+  {
+    using var source = new Bitmap(400, 200);
+    using var document = new ImageEditDocument(source);
+    document.DrawText("short", new Point(10, 10), Color.Blue);
+    Assert.IsTrue(document.TryGetTextAt(new Point(10, 10), out var id));
+    Assert.IsTrue(document.UpdateText(id, "a longer label"));
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out var updated));
+    Assert.AreEqual(Color.Blue, updated.Color);
+    Assert.AreEqual(new Point(10, 10), updated.Location);
+    Assert.IsFalse(document.UpdateText(id, "   "));
+    Assert.IsTrue(document.DeleteText(id));
+    Assert.IsFalse(document.TryGetTextAnnotation(id, out _));
+    Assert.IsTrue(document.Undo());
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out var restored));
+    Assert.AreEqual("a longer label", restored.Text);
+    document.Undo();
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out restored));
+    Assert.AreEqual("short", restored.Text);
+    document.Redo();
+    document.Redo();
+    Assert.IsFalse(document.TryGetTextAnnotation(id, out _));
+  }
+
+  [TestMethod]
+  public void Crop_KeepsTextEditableAndPreservesFontSize()
+  {
+    using var source = new Bitmap(600, 400);
+    using var document = new ImageEditDocument(source);
+    document.DrawText("label", new Point(100, 100));
+    document.TryGetTextAt(new Point(100, 100), out var id);
+    document.TryGetTextAnnotation(id, out var original);
+    Assert.IsTrue(document.Crop(new Rectangle(50, 50, 400, 250)));
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out var cropped));
+    Assert.AreEqual(new Point(50, 50), cropped.Location);
+    Assert.AreEqual(original.FontSize, cropped.FontSize);
+    Assert.IsTrue(document.UpdateText(id, "changed"));
+    Assert.IsTrue(document.MoveText(id, new Point(20, 20)));
+    Assert.IsTrue(document.DeleteText(id));
+  }
+
+  [TestMethod]
+  public void Mosaic_TextMoveEditDelete_DoesNotUncoverMaskedPixels()
+  {
+    using var source = new Bitmap(300, 160);
+    using (var graphics = Graphics.FromImage(source)) graphics.Clear(Color.White);
+    using var document = new ImageEditDocument(source);
+    document.DrawText("secret", new Point(10, 10));
+    document.TryGetTextAt(new Point(10, 10), out var id);
+    var mask = new Rectangle(5, 5, 90, 40);
+    Assert.IsTrue(document.Mosaic(mask));
+    using var masked = document.GetImageCopy();
+    Assert.IsTrue(document.MoveText(id, new Point(150, 90)));
+    Assert.IsTrue(document.UpdateText(id, "edited"));
+    using var moved = document.GetImageCopy();
+    for (var y = 90; y < 110; y++)
+      for (var x = 150; x < 190; x++)
+        Assert.AreEqual(Color.White.ToArgb(), moved.GetPixel(x, y).ToArgb(), "Moving text must not reveal its masked characters.");
+    Assert.IsTrue(document.DeleteText(id));
+    using var deleted = document.GetImageCopy();
+    for (var y = mask.Top; y < mask.Bottom; y++)
+      for (var x = mask.Left; x < mask.Right; x++)
+        Assert.AreEqual(masked.GetPixel(x, y), deleted.GetPixel(x, y));
+    document.Undo();
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out _));
+  }
+
   private static bool ContainsColor(Bitmap image, Color expected)
   {
     for (var y = 0; y < image.Height; y++)

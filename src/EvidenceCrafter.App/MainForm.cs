@@ -63,6 +63,10 @@ public sealed class MainForm : Form
   private GlobalShortcutRegistration? globalShortcut;
   private int mutationInProgress;
   private bool screenCaptureInProgress;
+  private readonly ImageWorkflowGate imageWorkflow = new();
+  private bool placementCompleted;
+  private byte[]? lastPreviewDigest;
+  private bool comparePendingImage;
   private int placementContextRequestVersion;
   private bool updatingPlacementContext;
   private bool placementTargetOverridden;
@@ -206,7 +210,10 @@ public sealed class MainForm : Form
       layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     }
 
-    layout.Controls.Add(new Label
+    var header = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2 };
+    header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+    header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+    header.Controls.Add(new Label
     {
       AutoSize = true,
       Text = "EvidenceCrafter",
@@ -215,6 +222,22 @@ public sealed class MainForm : Form
       Anchor = AnchorStyles.Left,
       Margin = new Padding(7, 2, 0, 8),
     }, 0, 0);
+    var topmost = new CheckBox
+    {
+      Text = "常に最前面", AutoSize = true, Anchor = AnchorStyles.Right,
+      Checked = settings.AlwaysOnTop, Margin = new Padding(8, 0, 7, 8),
+    };
+    TopMost = settings.AlwaysOnTop;
+    topmost.CheckedChanged += (_, _) =>
+    {
+      TopMost = topmost.Checked;
+      settings = settings with { AlwaysOnTop = topmost.Checked };
+      try { settingsStore.Save(settings); }
+      catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+      { SetStatus($"最前面設定を保存できません: {exception.Message}"); }
+    };
+    header.Controls.Add(topmost, 1, 0);
+    layout.Controls.Add(header, 0, 0);
 
     var workbookRow = CreateCard(3);
     workbookRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -899,7 +922,7 @@ public sealed class MainForm : Form
       return;
     }
 
-    if (clipboardPreviewOpen)
+    if (clipboardPreviewOpen || imageWorkflow.IsActive || screenCaptureInProgress)
     {
       clipboardPreviewPending = true;
       return;
@@ -917,7 +940,7 @@ public sealed class MainForm : Form
 
   private async void TryPreviewClipboardImage()
   {
-    if (clipboardPreviewOpen)
+    if (clipboardPreviewOpen || imageWorkflow.IsActive || screenCaptureInProgress)
     {
       clipboardPreviewPending = true;
       return;
@@ -925,9 +948,14 @@ public sealed class MainForm : Form
 
     Image? clipboardImage = null;
     uint sequenceBeforeRead = 0;
+    if (!imageWorkflow.TryBegin()) return;
+    var compareImage = comparePendingImage;
+    comparePendingImage = false;
     try
     {
       sequenceBeforeRead = NativeClipboard.GetClipboardSequenceNumber();
+      if (settings.DiagnosticLoggingEnabled)
+        diagnosticLog.Write(DiagnosticEventKind.Clipboard, DiagnosticOutcome.Started, clipboardSequence: sequenceBeforeRead);
       if (clipboardRetrySequence != 0 && sequenceBeforeRead != clipboardRetrySequence)
       {
         ResetClipboardRetry();
@@ -980,18 +1008,39 @@ public sealed class MainForm : Form
       }
 
       ResetClipboardRetry();
-      await ShowImagePreviewAsync(imageCopy, "Clipboard");
+      using var digestStream = new MemoryStream();
+      imageCopy.Save(digestStream, ImageFormat.Png);
+      var digest = System.Security.Cryptography.SHA256.HashData(digestStream.GetBuffer().AsSpan(0, (int)digestStream.Length));
+      var duplicate = compareImage && lastPreviewDigest is not null && digest.AsSpan().SequenceEqual(lastPreviewDigest);
+      lastPreviewDigest = digest;
+      if (duplicate)
+      {
+        if (settings.DiagnosticLoggingEnabled)
+          diagnosticLog.Write(DiagnosticEventKind.Clipboard, DiagnosticOutcome.Rejected, clipboardSequence: sequenceBeforeRead);
+        return;
+      }
+      await ShowImagePreviewAsync(imageCopy, "Clipboard", digestStream);
     }
     catch (ExternalException exception)
     {
+      comparePendingImage |= compareImage;
       ScheduleClipboardRetry(sequenceBeforeRead, $"Clipboardを読み取れませんでした: {exception.Message}");
+    }
+    catch (Exception exception) when (exception is not OutOfMemoryException)
+    {
+      SetStatus($"画像プレビューを開けませんでした: {exception.Message}");
+      WriteDiagnostic(DiagnosticEventKind.Clipboard, DiagnosticOutcome.Failed, exception: exception);
     }
     finally
     {
       clipboardImage?.Dispose();
+      imageWorkflow.End();
+      if (settings.DiagnosticLoggingEnabled)
+        diagnosticLog.Write(DiagnosticEventKind.Clipboard, DiagnosticOutcome.Finished, clipboardSequence: sequenceBeforeRead);
       if (!clipboardPreviewOpen && clipboardPreviewPending && IsHandleCreated && !IsDisposed && !Disposing)
       {
         clipboardPreviewPending = false;
+        comparePendingImage = true;
         QueueClipboardPreview();
       }
     }
@@ -999,13 +1048,15 @@ public sealed class MainForm : Form
 
   private async Task CaptureScreenAsync()
   {
-    if (screenCaptureInProgress || clipboardPreviewOpen ||
+    if (screenCaptureInProgress || clipboardPreviewOpen || imageWorkflow.IsActive ||
       Volatile.Read(ref mutationInProgress) != 0 || IsDisposed || Disposing)
     {
       return;
     }
 
+    if (!imageWorkflow.TryBegin()) return;
     screenCaptureInProgress = true;
+    placementCompleted = false;
     captureScreenButton.Enabled = false;
     try
     {
@@ -1032,27 +1083,40 @@ public sealed class MainForm : Form
       if (!IsDisposed && !Disposing)
       {
         Show();
-        Activate();
+        if (!placementCompleted) Activate();
         captureScreenButton.Enabled = true;
       }
       screenCaptureInProgress = false;
+      imageWorkflow.End();
+      if (clipboardPreviewPending && CanUpdateUi)
+      {
+        clipboardPreviewPending = false;
+        QueueClipboardPreview();
+      }
     }
   }
 
-  private async Task ShowImagePreviewAsync(Image image, string sourceLabel)
+  private async Task ShowImagePreviewAsync(Image image, string sourceLabel, MemoryStream? encodedImage = null)
   {
     var workbook = workbookSelector.SelectedItem as WorkbookIdentity;
     var worksheetName = string.IsNullOrWhiteSpace(worksheetNameBox.Text)
       ? "ActiveSheet"
       : worksheetNameBox.Text.Trim();
     var requestedCaseLabel = RequestedCaseLabel;
+    var requestedSide = SelectedSide;
     var temporaryDirectory = Path.Combine(Path.GetTempPath(), "EvidenceCrafter");
     var imagePath = Path.Combine(temporaryDirectory, $"preview-{Guid.NewGuid():N}.png");
     try
     {
       Directory.CreateDirectory(temporaryDirectory);
       using var imageCopy = new Bitmap(image);
-      imageCopy.Save(imagePath, ImageFormat.Png);
+      if (encodedImage is null) imageCopy.Save(imagePath, ImageFormat.Png);
+      else
+      {
+        using var file = File.Create(imagePath);
+        encodedImage.Position = 0;
+        encodedImage.CopyTo(file);
+      }
       var request = new AutomaticPlacementImage(imagePath, ToImageDimensions(imageCopy));
       SetStatus("配置予定のCASE／Sideを解析しています…");
       var analysis = workbook is null
@@ -1060,13 +1124,14 @@ public sealed class MainForm : Form
         : await StaTask.Run(() => automaticPlacementService.Analyze(
           workbook,
           worksheetName,
-          SelectedSide,
+          requestedSide,
           [request],
           preferActiveGap: false,
           horizontalMarginPoints: settings.HorizontalMarginPoints,
           requestedCaseLabel: requestedCaseLabel,
           sameCaseThenNext: settings.AdvanceMode is PlacementAdvanceMode.SameCaseThenNext));
 
+      if (!CanUpdateUi) return;
       if (analysis.Succeeded)
       {
         SetPlacementContext(analysis);
@@ -1076,7 +1141,7 @@ public sealed class MainForm : Form
         new Bitmap(image),
         workbook?.DisplayLabel ?? "未選択",
         worksheetName,
-        SelectedSide,
+        requestedSide,
         analysis);
       clipboardPreviewOpen = true;
       DialogResult previewResult;
@@ -1092,7 +1157,7 @@ public sealed class MainForm : Form
       if (previewResult == DialogResult.Yes && workbook is not null)
       {
         await PlaceClipboardImageAutomaticallyAsync(
-          workbook, worksheetName, SelectedSide, image, requestedCaseLabel, imagePath, analysis);
+          workbook, analysis.WorksheetName, analysis.ResolvedSide, image, analysis.CaseLabel, imagePath, analysis);
         imagePath = string.Empty;
       }
       else if (previewResult == DialogResult.Retry && workbook is not null)
@@ -1102,7 +1167,7 @@ public sealed class MainForm : Form
         {
           using var editedImage = editor.GetEditedImage();
           await PlaceClipboardImageAutomaticallyAsync(
-            workbook, worksheetName, SelectedSide, editedImage, requestedCaseLabel);
+            workbook, analysis!.WorksheetName, analysis.ResolvedSide, editedImage, analysis.CaseLabel);
         }
         else
         {
@@ -1125,6 +1190,11 @@ public sealed class MainForm : Form
 
   protected override bool ProcessCmdKey(ref Message message, Keys keyData)
   {
+    if (keyData == Keys.Enter && !EnterShortcut.IsEditingInput(this))
+    {
+      if (!EnterShortcut.IsRepeat(message) && ValidateChildren()) _ = CaptureScreenAsync();
+      return true;
+    }
     if (keyData == (Keys.Control | Keys.Z))
     {
       _ = UndoAsync();
@@ -1162,6 +1232,7 @@ public sealed class MainForm : Form
 
     var temporaryDirectory = Path.Combine(Path.GetTempPath(), "EvidenceCrafter");
     var imagePath = preparedImagePath ?? Path.Combine(temporaryDirectory, $"automatic-{Guid.NewGuid():N}.png");
+    var imageWasPlaced = false;
     try
     {
       using var imageCopy = new Bitmap(image);
@@ -1186,6 +1257,9 @@ public sealed class MainForm : Form
       {
         return;
       }
+
+      placementCompleted = true;
+      imageWasPlaced = true;
 
       using var stream = new MemoryStream();
       imageCopy.Save(stream, ImageFormat.Png);
@@ -1218,10 +1292,21 @@ public sealed class MainForm : Form
         result.PlacedImages[^1].WorksheetName,
         result.Analysis?.CaseLabel ?? caseLabelBox.Text,
         side);
+      var placedImage = result.PlacedImages[^1];
+      var focus = await StaTask.Run(() => new ExcelPlacementFocusService().FocusPlacedImage(
+        workbook, placedImage.WorksheetName, placedImage.FocusCell));
+      if (focus.Succeeded)
+      {
+        if (!ExcelPlacementFocusService.BringToForeground(workbook))
+          SetStatus("画像は配置済みです。対象Excelを前面に表示できませんでした。");
+      }
+      else SetStatus($"画像は配置済みです。{focus.Message}");
     }
     catch (Exception exception) when (exception is not OutOfMemoryException)
     {
-      SetStatus($"自動配置に失敗しました: {exception.Message}");
+      SetStatus(imageWasPlaced
+        ? $"画像は配置済みですが、後処理でエラーが発生しました: {exception.Message}"
+        : $"自動配置に失敗しました: {exception.Message}");
       WriteDiagnostic(
         DiagnosticEventKind.MutationResult,
         DiagnosticOutcome.Failed,

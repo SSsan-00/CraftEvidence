@@ -263,6 +263,20 @@ public sealed class ExcelAutomaticPlacementService
         currentCaseEnd = checked(currentCaseEnd + mutation.Count);
       }
 
+      if (step.Plan.Insertions.Count > 0)
+      {
+        // Inserted rows can inherit a different height or Hidden state in Excel.
+        // Verify the real space before adding the picture, not the assumed model alone.
+        var expanded = Analyze(workbook, initialAnalysis.WorksheetName, side,
+          [step.Image], preferActiveGap, horizontalMarginPoints, initialAnalysis.CaseLabel);
+        if (!expanded.Succeeded || expanded.Steps[0].Plan.Insertions.Count > 0 ||
+            expanded.Steps[0].Plan.FocusCell != step.Plan.FocusCell)
+        {
+          return Compensate(workbook, initialAnalysis, placed, appliedRows,
+            "追加行の実際の高さ・配置位置を確認できないため、画像を配置せず行挿入を戻します。");
+        }
+      }
+
       var placement = imagePlacementService.PlaceImage(
         workbook,
         initialAnalysis.WorksheetName,

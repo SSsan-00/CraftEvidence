@@ -661,6 +661,7 @@ public sealed class ExcelSheetSnapshotService
       var totalHeight = Convert.ToDouble(GetRequiredProperty(range, "Height"), CultureInfo.InvariantCulture);
       if (totalHeight == 0)
       {
+        for (var row = firstRow; row <= lastRow; row++) result[row] = 0;
         return;
       }
       if (firstRow == lastRow)
@@ -698,7 +699,7 @@ public sealed class ExcelSheetSnapshotService
         {
           cell = GetRequiredProperty(worksheet, "Cells", firstRow, 1);
           var height = Convert.ToDouble(GetRequiredProperty(cell, "Height"), CultureInfo.InvariantCulture);
-          if (double.IsFinite(height) && height > 0) result[firstRow] = height;
+          if (double.IsFinite(height) && height >= 0) result[firstRow] = height;
         }
         finally { ComRelease.Release(cell); }
         return;

@@ -12,6 +12,17 @@ namespace EvidenceCrafter.Excel;
 /// </summary>
 public sealed class ExcelPlacementFocusService : IPlacementFocusService
 {
+  public static bool BringToForeground(WorkbookIdentity workbook)
+  {
+    var window = workbook.ExcelWindowHandle;
+    if (window == 0 || workbook.WindowSessionToken == 0 ||
+        NativeMethods.GetProp(workbook.ExcelDocumentWindowHandle, WorkbookSessionTokenRegistry.WindowPropertyName) != workbook.WindowSessionToken)
+      return false;
+    NativeMethods.GetWindowThreadProcessId(window, out var processId);
+    if (processId != workbook.ProcessId) return false;
+    if (NativeMethods.IsIconic(window)) NativeMethods.ShowWindow(window, 9);
+    return NativeMethods.SetForegroundWindow(window);
+  }
   public FocusResult FocusPlacedImage(
     WorkbookIdentity workbook,
     string worksheetName,
@@ -400,6 +411,12 @@ public sealed class ExcelPlacementFocusService : IPlacementFocusService
 
   private static class NativeMethods
   {
+    [DllImport("user32.dll")]
+    internal static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(nint window);
+    [DllImport("user32.dll")]
+    internal static extern bool ShowWindow(nint window, int command);
     [DllImport("ole32.dll")]
     internal static extern int GetRunningObjectTable(
       int reserved,

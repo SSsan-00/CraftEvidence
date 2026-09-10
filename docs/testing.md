@@ -1,5 +1,8 @@
 # EvidenceCrafter テスト方針
 
+2026-09-11のキャプチャ・テキスト編集・最前面機能の検証結果と手動受入手順は
+[実装レビュー](review-capture-editor-window.md) を参照。
+
 ## 通常テスト
 
 `EvidenceCrafter.Tests` はExcelなしで動くCoreテストを既定とする。

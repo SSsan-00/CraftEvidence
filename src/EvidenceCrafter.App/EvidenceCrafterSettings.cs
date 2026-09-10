@@ -11,6 +11,8 @@ internal sealed record EvidenceCrafterSettings
 
   public bool FollowExcelSelection { get; init; } = true;
 
+  public bool AlwaysOnTop { get; init; }
+
   public PlacementAdvanceMode AdvanceMode { get; init; } = PlacementAdvanceMode.SameCaseThenNext;
 
   internal EvidenceCrafterSettings Normalize() => this with

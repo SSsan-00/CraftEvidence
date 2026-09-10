@@ -7,6 +7,27 @@ namespace EvidenceCrafter.Tests;
 public sealed class AppInfrastructureTests
 {
   [TestMethod]
+  public void ImageWorkflow_RejectsReentryUntilFinallyReleasesIt()
+  {
+    var gate = new ImageWorkflowGate();
+    Assert.IsTrue(gate.TryBegin());
+    try
+    {
+      foreach (var phase in new[] { "analysis", "preview", "editor", "placement" })
+        Assert.IsFalse(gate.TryBegin(), phase);
+    }
+    finally { gate.End(); }
+    Assert.IsTrue(gate.TryBegin(), "The next capture must be accepted after completion or cancellation.");
+    gate.End();
+  }
+
+  [TestMethod]
+  public void EnterShortcut_RecognizesNativeKeyRepeat()
+  {
+    Assert.IsFalse(EnterShortcut.IsRepeat(Message.Create(0, 0x100, (nint)13, 1)));
+    Assert.IsTrue(EnterShortcut.IsRepeat(Message.Create(0, 0x100, (nint)13, (nint)((1L << 30) | 1))));
+  }
+  [TestMethod]
   public void NormalizeScreenSelection_SupportsEveryDragDirection()
   {
     var expected = new Rectangle(10, 20, 21, 31);
@@ -27,12 +48,14 @@ public sealed class AppInfrastructureTests
       HorizontalMarginPoints = 200,
       DiagnosticLoggingEnabled = false,
       GlobalShortcutEnabled = false,
+      AlwaysOnTop = true,
     });
 
     var loaded = store.Load();
     Assert.AreEqual(72, loaded.HorizontalMarginPoints);
     Assert.IsFalse(loaded.DiagnosticLoggingEnabled);
     Assert.IsFalse(loaded.GlobalShortcutEnabled);
+    Assert.IsTrue(loaded.AlwaysOnTop);
     var savedJson = File.ReadAllText(path);
     Assert.IsFalse(savedJson.Contains("Workbook", StringComparison.Ordinal));
     Assert.IsFalse(savedJson.Contains("Side", StringComparison.Ordinal));

@@ -46,7 +46,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
           {
             cell = GetRequiredProperty(worksheet, "Cells", row, 1);
             var height = Convert.ToDouble(GetRequiredProperty(cell, "Height"), CultureInfo.InvariantCulture);
-            if (double.IsFinite(height) && height > 0) expected[row] = height;
+            if (double.IsFinite(height) && height >= 0) expected[row] = height;
           }
           finally { Release(cell); }
         }

@@ -147,7 +147,14 @@ internal sealed class ImageEditDocument : IDisposable
       return false;
     }
 
-    annotation = CreateTextAnnotation(existing.Id, existing.Text, location, existing.Color);
+    var moved = CreateTextAnnotation(existing.Id, existing.Text, location, existing.Color, existing.FontSize);
+    annotation = moved with
+    {
+      MaskedRegions = existing.MaskedRegions.Select(region => new Rectangle(
+        region.X + moved.Location.X - existing.Location.X,
+        region.Y + moved.Location.Y - existing.Location.Y,
+        region.Width, region.Height)).ToArray(),
+    };
     return true;
   }
 
@@ -184,6 +191,22 @@ internal sealed class ImageEditDocument : IDisposable
     return true;
   }
 
+  public bool UpdateText(Guid annotationId, string text)
+  {
+    if (string.IsNullOrWhiteSpace(text) || !TryGetTextAnnotation(annotationId, out var existing) || existing.Text == text.Trim()) return false;
+    var updated = CreateTextAnnotation(existing.Id, text.Trim(), existing.Location, existing.Color, existing.FontSize)
+      with { MaskedRegions = existing.MaskedRegions };
+    Commit(CopyBitmap(current), nextStateId++, textAnnotations.Select(item => item.Id == annotationId ? updated : item).ToArray());
+    return true;
+  }
+
+  public bool DeleteText(Guid annotationId)
+  {
+    if (!TryGetTextAnnotation(annotationId, out _)) return false;
+    Commit(CopyBitmap(current), nextStateId++, textAnnotations.Where(item => item.Id != annotationId).ToArray());
+    return true;
+  }
+
   internal void DrawTextAnnotations(
     Graphics graphics,
     Guid? excludedAnnotationId = null,
@@ -216,7 +239,9 @@ internal sealed class ImageEditDocument : IDisposable
       return false;
     }
 
-    return Edit(next =>
+    using var rendered = RenderCurrent();
+    var next = CopyBitmap(current);
+    try
     {
       var sampleWidth = Math.Max(1, (int)Math.Ceiling(clipped.Width / (double)blockSize));
       var sampleHeight = Math.Max(1, (int)Math.Ceiling(clipped.Height / (double)blockSize));
@@ -225,18 +250,26 @@ internal sealed class ImageEditDocument : IDisposable
       {
         sampleGraphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
         sampleGraphics.DrawImage(
-          next,
+          rendered,
           new Rectangle(0, 0, sampleWidth, sampleHeight),
           clipped,
           GraphicsUnit.Pixel);
       }
 
-      using var graphics = Graphics.FromImage(next);
-      graphics.CompositingMode = CompositingMode.SourceCopy;
-      graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
-      graphics.PixelOffsetMode = PixelOffsetMode.Half;
-      graphics.DrawImage(sample, clipped);
-    });
+      using (var graphics = Graphics.FromImage(next))
+      {
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+        graphics.PixelOffsetMode = PixelOffsetMode.Half;
+        graphics.DrawImage(sample, clipped);
+      }
+      // Bake only the masked area, and keep later text moves from uncovering it.
+      Commit(next, nextStateId++, textAnnotations.Select(item => item with
+      { MaskedRegions = [.. item.MaskedRegions, clipped] }).ToArray());
+      next = null!;
+      return true;
+    }
+    finally { next?.Dispose(); }
   }
 
   public bool Crop(Rectangle bounds)
@@ -247,22 +280,28 @@ internal sealed class ImageEditDocument : IDisposable
     }
 
     ObjectDisposedException.ThrowIf(disposed, this);
-    using var rendered = RenderCurrent();
     var cropped = new Bitmap(clipped.Width, clipped.Height, PixelFormat.Format32bppPArgb);
-    PreserveResolution(rendered, cropped);
+    PreserveResolution(current, cropped);
     try
     {
       using (var graphics = Graphics.FromImage(cropped))
       {
         graphics.CompositingMode = CompositingMode.SourceCopy;
         graphics.DrawImage(
-          rendered,
+          current,
           new Rectangle(0, 0, cropped.Width, cropped.Height),
           clipped,
           GraphicsUnit.Pixel);
       }
 
-      Commit(cropped, nextStateId++, []);
+      var annotations = textAnnotations.Where(item => item.Bounds.IntersectsWith(clipped)).Select(item => item with
+      {
+        Location = new Point(item.Location.X - clipped.X, item.Location.Y - clipped.Y),
+        Bounds = new RectangleF(item.Bounds.X - clipped.X, item.Bounds.Y - clipped.Y, item.Bounds.Width, item.Bounds.Height),
+        MaskedRegions = item.MaskedRegions.Select(region => new Rectangle(
+          region.X - clipped.X, region.Y - clipped.Y, region.Width, region.Height)).ToArray(),
+      }).ToArray();
+      Commit(cropped, nextStateId++, annotations);
       cropped = null!;
       return true;
     }
@@ -417,34 +456,40 @@ internal sealed class ImageEditDocument : IDisposable
     return rendered;
   }
 
-  private TextAnnotation CreateTextAnnotation(Guid id, string text, Point location, Color color)
+  private TextAnnotation CreateTextAnnotation(Guid id, string text, Point location, Color color, float? fontSize = null)
   {
     location = Clamp(location);
     using var graphics = Graphics.FromImage(current);
-    using var font = CreateTextFont();
+    using var font = CreateTextFont(fontSize);
     var measured = graphics.MeasureString(text, font);
     var x = Math.Min(location.X, Math.Max(0F, current.Width - measured.Width - 6F));
     var y = Math.Min(location.Y, Math.Max(0F, current.Height - measured.Height - 4F));
     var bounds = new RectangleF(x, y, measured.Width + 6F, measured.Height + 4F);
-    return new TextAnnotation(id, text, new Point((int)x, (int)y), color, bounds);
+    return new TextAnnotation(id, text, new Point((int)x, (int)y), color, bounds) { FontSize = font.Size };
   }
 
   private void DrawTextAnnotation(Graphics graphics, TextAnnotation annotation)
   {
-    graphics.SmoothingMode = SmoothingMode.AntiAlias;
-    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-    using var font = CreateTextFont();
-    using var background = new SolidBrush(Color.FromArgb(210, Color.White));
-    using var foreground = new SolidBrush(annotation.Color);
-    using var border = new Pen(annotation.Color, Math.Max(1F, StrokeWidth(current) / 2F));
-    graphics.FillRectangle(background, annotation.Bounds);
-    graphics.DrawRectangle(border, annotation.Bounds.X, annotation.Bounds.Y, annotation.Bounds.Width, annotation.Bounds.Height);
-    graphics.DrawString(annotation.Text, font, foreground, annotation.Bounds.X + 3F, annotation.Bounds.Y + 2F);
+    var state = graphics.Save();
+    try
+    {
+      foreach (var region in annotation.MaskedRegions) graphics.ExcludeClip(region);
+      graphics.SmoothingMode = SmoothingMode.AntiAlias;
+      graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+      using var font = CreateTextFont(annotation.FontSize);
+      using var background = new SolidBrush(Color.FromArgb(210, Color.White));
+      using var foreground = new SolidBrush(annotation.Color);
+      using var border = new Pen(annotation.Color, Math.Max(1F, StrokeWidth(current) / 2F));
+      graphics.FillRectangle(background, annotation.Bounds);
+      graphics.DrawRectangle(border, annotation.Bounds.X, annotation.Bounds.Y, annotation.Bounds.Width, annotation.Bounds.Height);
+      graphics.DrawString(annotation.Text, font, foreground, annotation.Bounds.X + 3F, annotation.Bounds.Y + 2F);
+    }
+    finally { graphics.Restore(state); }
   }
 
-  private Font CreateTextFont() => new(
+  private Font CreateTextFont(float? size = null) => new(
     FontFamily.GenericSansSerif,
-    Math.Max(12F, Math.Min(current.Width, current.Height) / 25F),
+    size ?? Math.Max(12F, Math.Min(current.Width, current.Height) / 25F),
     FontStyle.Bold,
     GraphicsUnit.Pixel);
 
@@ -475,4 +520,8 @@ internal sealed record TextAnnotation(
   string Text,
   Point Location,
   Color Color,
-  RectangleF Bounds);
+  RectangleF Bounds)
+{
+  internal float FontSize { get; init; } = 12;
+  internal IReadOnlyList<Rectangle> MaskedRegions { get; init; } = [];
+}

@@ -7,6 +7,31 @@ namespace EvidenceCrafter.Tests;
 public sealed class PlacementPlannerTests
 {
   private readonly PlacementPlanner planner = new(new ImageSizingService());
+  [TestMethod]
+  public void Plan_HiddenRowsDoNotCountAsAvailableImageHeight()
+  {
+    var request = CreateRequest([]) with
+    {
+      RowHeights = new Dictionary<int, double> { [5] = 0, [6] = 0, [7] = 15, [8] = 15 },
+    };
+    var result = planner.Plan(request);
+    Assert.AreEqual(8, result.EndRow);
+  }
+  [TestMethod]
+  public void Plan_ExplicitOccupiedSide_AppendsBelowManagedAndUnmanagedImages()
+  {
+    ContentSpan[] contents =
+    [
+      new(EvidenceSide.New, 5, 10, ContentKind.ManagedImage),
+      new(EvidenceSide.New, 12, 25, ContentKind.Shape),
+      new(null, 26, 30, ContentKind.Shape),
+      new(EvidenceSide.Old, 31, 40, ContentKind.Shape),
+    ];
+    var result = planner.Plan(CreateRequest(contents, activeRow: 6, preferGap: false));
+    Assert.AreEqual(33, result.StartRow);
+    Assert.AreEqual(PlacementMode.Tail, result.Mode);
+    Assert.AreEqual(4, result.FocusCell.Column);
+  }
   private static readonly EvidenceCaseLayout Layout = new(
     3,
     52,

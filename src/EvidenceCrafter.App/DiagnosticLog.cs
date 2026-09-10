@@ -19,6 +19,7 @@ internal enum DiagnosticOutcome
   Succeeded,
   Rejected,
   Failed,
+  Finished,
 }
 
 internal sealed class DiagnosticLog
@@ -46,7 +47,8 @@ internal sealed class DiagnosticLog
     int? processId = null,
     int? itemCount = null,
     TimeSpan? duration = null,
-    Exception? exception = null)
+    Exception? exception = null,
+    uint? clipboardSequence = null)
   {
     var entry = new DiagnosticEntry(
       DateTimeOffset.UtcNow,
@@ -56,7 +58,8 @@ internal sealed class DiagnosticLog
       itemCount,
       duration is null ? null : checked((long)duration.Value.TotalMilliseconds),
       exception?.GetType().FullName,
-      exception?.HResult);
+      exception?.HResult,
+      clipboardSequence);
 
     try
     {
@@ -107,5 +110,6 @@ internal sealed class DiagnosticLog
     int? ItemCount,
     long? DurationMilliseconds,
     string? ExceptionType,
-    int? ExceptionHResult);
+    int? ExceptionHResult,
+    uint? ClipboardSequence);
 }

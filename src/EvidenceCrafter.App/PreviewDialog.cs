@@ -6,6 +6,8 @@ namespace EvidenceCrafter.App;
 internal sealed class PreviewDialog : Form
 {
   private readonly Image image;
+  private readonly Button placeButton;
+  private readonly Button editButton;
 
   public PreviewDialog(
     Image image,
@@ -57,7 +59,7 @@ internal sealed class PreviewDialog : Form
 
     var canPlace = analysis?.Succeeded == true;
 
-    var placeButton = new Button
+    placeButton = new Button
     {
       Text = canPlace ? "編集せず配置" : "配置不可",
       AutoSize = true,
@@ -65,7 +67,7 @@ internal sealed class PreviewDialog : Form
       Enabled = canPlace,
     };
 
-    var editButton = new Button
+    editButton = new Button
     {
       Text = "編集して配置",
       AutoSize = true,
@@ -97,6 +99,20 @@ internal sealed class PreviewDialog : Form
     AcceptButton = canPlace ? placeButton : closeButton;
     CancelButton = closeButton;
     Controls.Add(layout);
+  }
+
+  protected override bool ProcessCmdKey(ref Message message, Keys keyData)
+  {
+    if (keyData == Keys.Enter || keyData == (Keys.Shift | Keys.Enter))
+    {
+      if (!EnterShortcut.IsRepeat(message))
+      {
+        var button = keyData == Keys.Enter ? placeButton : editButton;
+        if (button.Enabled) button.PerformClick();
+      }
+      return true;
+    }
+    return base.ProcessCmdKey(ref message, keyData);
   }
 
   private static string BuildContext(

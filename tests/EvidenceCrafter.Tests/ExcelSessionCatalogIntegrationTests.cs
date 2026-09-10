@@ -30,7 +30,11 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
   public void PlacementAnalysis_WithRealTemporaryWorkbook_ReportsTimings() =>
     RunSupervisedScenario(Scenario.PlacementAnalysis);
 
-  private enum Scenario { Operations, SnapshotReads, RowHeights, PlacementAnalysis }
+  [TestMethod]
+  public void AppendImages_InReferenceCopies_DoNotOverlap() =>
+    RunSupervisedScenario(Scenario.ReferenceAppend);
+
+  private enum Scenario { Operations, SnapshotReads, RowHeights, PlacementAnalysis, ReferenceAppend }
 
   private static void RunSupervisedScenario(Scenario scenario)
   {
@@ -64,7 +68,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
     {
       thread.SetApartmentState(ApartmentState.STA);
       thread.Start();
-      if (!completed.Task.Wait(TimeSpan.FromSeconds(55)))
+      if (!completed.Task.Wait(TimeSpan.FromSeconds(scenario == Scenario.ReferenceAppend ? 180 : 55)))
       {
         supervisor.SuppressComCleanup();
         var terminated = supervisor.TryTerminate(out var terminationFailure);
@@ -166,7 +170,11 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
       SetProperty(otherWorksheet, "Name", "OtherTarget");
       _ = InvokeMethod(otherWorkbook, "SaveAs", otherWorkbookPath);
 
-      if (scenario == Scenario.SnapshotReads)
+      if (scenario == Scenario.ReferenceAppend)
+      {
+        VerifyReferenceAppend(workbooks, temporaryDirectory, placementImagePath);
+      }
+      else if (scenario == Scenario.SnapshotReads)
       {
         VerifySnapshotReadPerformance(otherWorksheet);
       }

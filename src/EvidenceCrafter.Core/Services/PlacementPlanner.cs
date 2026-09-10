@@ -240,7 +240,7 @@ public sealed class PlacementPlanner(ImageSizingService imageSizingService)
     while (total < requiredHeight)
     {
       var height = rowHeights.GetValueOrDefault(row, defaultRowHeight);
-      if (!double.IsFinite(height) || height <= 0)
+      if (!double.IsFinite(height) || height < 0)
       {
         throw new InvalidOperationException($"Row {row} has an invalid height.");
       }
