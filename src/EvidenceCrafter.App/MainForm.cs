@@ -227,7 +227,7 @@ public sealed class MainForm : Form
     };
     UiTheme.StyleText(title);
     header.Controls.Add(title, 0, 0);
-    var darkMode = new CheckBox
+    var darkMode = new ThemedCheckBox
     {
       Text = "ダークモード", AutoSize = true, Anchor = AnchorStyles.Right,
       Checked = settings.DarkMode, Margin = new Padding(8, 0, 7, 8),
@@ -244,7 +244,7 @@ public sealed class MainForm : Form
       { SetStatus($"ダークモード設定を保存できません: {exception.Message}"); }
     };
     header.Controls.Add(darkMode, 1, 0);
-    var topmost = new CheckBox
+    var topmost = new ThemedCheckBox
     {
       Text = "常に最前面", AutoSize = true, Anchor = AnchorStyles.Right,
       Checked = settings.AlwaysOnTop, Margin = new Padding(8, 0, 7, 8),

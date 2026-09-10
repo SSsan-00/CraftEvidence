@@ -9,14 +9,14 @@ internal static class UiTheme
   private static readonly ConditionalWeakTable<Control, RoleHolder> roles = new();
 
   internal static bool DarkMode { get; private set; }
-  internal static Color Canvas => DarkMode ? Color.FromArgb(22, 27, 34) : Color.FromArgb(244, 246, 248);
-  internal static Color Surface => DarkMode ? Color.FromArgb(33, 38, 45) : Color.White;
-  internal static Color SurfaceMuted => DarkMode ? Color.FromArgb(48, 54, 61) : Color.FromArgb(238, 242, 246);
-  internal static Color Text => DarkMode ? Color.FromArgb(240, 246, 252) : Color.FromArgb(23, 32, 42);
-  internal static Color TextMuted => DarkMode ? Color.FromArgb(177, 186, 196) : Color.FromArgb(102, 112, 133);
-  internal static Color Border => DarkMode ? Color.FromArgb(68, 76, 86) : Color.FromArgb(215, 222, 231);
-  internal static Color Primary => DarkMode ? Color.FromArgb(47, 129, 247) : Color.FromArgb(23, 105, 170);
-  internal static Color PrimaryHover => DarkMode ? Color.FromArgb(88, 166, 255) : Color.FromArgb(15, 86, 141);
+  internal static Color Canvas => DarkMode ? Color.FromArgb(13, 17, 23) : Color.FromArgb(244, 246, 248);
+  internal static Color Surface => DarkMode ? Color.FromArgb(22, 27, 34) : Color.White;
+  internal static Color SurfaceMuted => DarkMode ? Color.FromArgb(33, 38, 45) : Color.FromArgb(238, 242, 246);
+  internal static Color Text => DarkMode ? Color.White : Color.FromArgb(23, 32, 42);
+  internal static Color TextMuted => DarkMode ? Color.FromArgb(205, 217, 229) : Color.FromArgb(102, 112, 133);
+  internal static Color Border => DarkMode ? Color.FromArgb(87, 96, 106) : Color.FromArgb(215, 222, 231);
+  internal static Color Primary => DarkMode ? Color.FromArgb(88, 166, 255) : Color.FromArgb(23, 105, 170);
+  internal static Color PrimaryHover => DarkMode ? Color.FromArgb(121, 192, 255) : Color.FromArgb(15, 86, 141);
 
   internal static void SetDarkMode(bool enabled) => DarkMode = enabled;
 
@@ -138,4 +138,9 @@ internal static class UiTheme
     button.BackColor = primary ? Primary : SurfaceMuted;
     button.ForeColor = primary ? Color.White : Text;
   }
+}
+
+internal sealed class ThemedCheckBox : CheckBox
+{
+  protected override bool ShowFocusCues => false;
 }
