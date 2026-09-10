@@ -1143,6 +1143,7 @@ public sealed class MainForm : Form
         worksheetName,
         requestedSide,
         analysis);
+      preview.TopMost = TopMost;
       clipboardPreviewOpen = true;
       DialogResult previewResult;
       try
@@ -1163,6 +1164,7 @@ public sealed class MainForm : Form
       else if (previewResult == DialogResult.Retry && workbook is not null)
       {
         using var editor = new ImageEditorDialog(image);
+        editor.TopMost = TopMost;
         if (editor.ShowDialog(this) == DialogResult.OK)
         {
           using var editedImage = editor.GetEditedImage();

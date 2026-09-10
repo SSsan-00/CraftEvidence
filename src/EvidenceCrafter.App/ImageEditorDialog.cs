@@ -95,7 +95,7 @@ internal sealed class ImageEditorDialog : Form
     {
       Spring = true,
       TextAlign = ContentAlignment.MiddleLeft,
-      Text = InstructionFor(ImageEditorTool.Rectangle) + " テキストはドラッグで移動・ダブルクリックで編集・×で削除。",
+      Text = EditorInstruction(ImageEditorTool.Rectangle),
       ForeColor = UiTheme.TextMuted,
     };
     canvas.ActionRejected += (_, message) => statusLabel.Text = message;
@@ -209,7 +209,7 @@ internal sealed class ImageEditorDialog : Form
     }
 
     canvas.Tool = tool;
-    statusLabel.Text = InstructionFor(tool) + " テキストはドラッグで移動・ダブルクリックで編集・×で削除。";
+    statusLabel.Text = EditorInstruction(tool);
   }
 
   private void CanvasTextRequested(object? sender, ImageTextRequestedEventArgs eventArgs)
@@ -270,11 +270,18 @@ internal sealed class ImageEditorDialog : Form
   {
     ImageEditorTool.Rectangle => "ドラッグした範囲へ枠を追加します。",
     ImageEditorTool.Arrow => "矢印の始点から終点までドラッグします。",
-    ImageEditorTool.Text => "文字を追加する位置をクリックします。",
+    ImageEditorTool.Text => string.Empty,
     ImageEditorTool.Mosaic => "隠したい範囲をドラッグします。",
     ImageEditorTool.Crop => "残したい範囲をドラッグしてトリミングします。",
     _ => string.Empty,
   };
+
+  private static string EditorInstruction(ImageEditorTool tool) =>
+    string.Join(" ", new[]
+    {
+      InstructionFor(tool),
+      "テキストはドラッグで移動・ダブルクリックで編集・×で削除。",
+    }.Where(text => !string.IsNullOrEmpty(text)));
 }
 
 internal enum ImageEditorTool
@@ -657,6 +664,7 @@ internal sealed class ImageTextInputDialog : Form
   {
     Text = existingText is null ? "テキストを追加" : "テキストを編集";
     textBox.Text = existingText ?? string.Empty;
+    textBox.SelectionStart = textBox.TextLength;
     StartPosition = FormStartPosition.CenterParent;
     ClientSize = new Size(440, 180);
     MinimumSize = new Size(360, 160);
@@ -715,6 +723,22 @@ internal sealed class ImageTextInputDialog : Form
   }
 
   public string EnteredText => textBox.Text;
+
+  protected override bool ProcessCmdKey(ref Message message, Keys keyData)
+  {
+    if (EnterShortcut.IsEditingInput(this)) return base.ProcessCmdKey(ref message, keyData);
+    if (keyData == Keys.Enter)
+    {
+      if (!EnterShortcut.IsRepeat(message)) DialogResult = DialogResult.OK;
+      return true;
+    }
+    if (keyData == (Keys.Shift | Keys.Enter))
+    {
+      textBox.SelectedText = Environment.NewLine;
+      return true;
+    }
+    return base.ProcessCmdKey(ref message, keyData);
+  }
 
   protected override void OnShown(EventArgs eventArgs)
   {

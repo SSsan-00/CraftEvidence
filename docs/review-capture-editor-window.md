@@ -67,8 +67,9 @@ SDK 9.0.304、同じマシン、240行CASE/60Shapeの一時Workbookで比較し�
 
 ## 配布物
 
-- バージョン: `0.1.0-preview.21`
+- バージョン: `0.1.0-preview.22`
+- 追補: テキスト入力はEnterで追加・変更、Shift+Enterで改行。画像編集下部の「文字を追加する位置をクリックします。」を削除。最前面ON時は所有関係と各FormのTopMostを併用し、編集画面、プレビュー、メイン画面、他アプリの順を維持する。
 - 更新EXE: `artifacts/publish/win-x64/EvidenceCrafter.exe`
-- SHA-256: `50BA6E6F339BE0A42EB40772D64026909F3C1478D2F5538D00F1CC74CFF3BE0C`
+- SHA-256: `33FD99169E70C0F21F09AB733E7D8455BE4FE7381CD5C86DD6118E8B8BE0A9F8`
 - 旧EXEとハッシュ: `artifacts/before-capture-editor-20260911/`
 - SDK 9.0.304によるRelease publish成功。今回remote pushは実施していない。

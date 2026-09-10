@@ -8,6 +8,25 @@ namespace EvidenceCrafter.Tests;
 public sealed class ImageEditorInteractionTests
 {
   [TestMethod]
+  public void TextInput_ShiftEnterAddsLineBreakAndEnterConfirms() => OnSta(() =>
+  {
+    using var dialog = new ImageTextInputDialog("first");
+    var message = Message.Create(0, 0x100, (nint)13, 1);
+    var arguments = new object[] { message, Keys.Shift | Keys.Enter };
+    var handled = (bool)typeof(ImageTextInputDialog).GetMethod(
+      "ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, arguments)!;
+    Assert.IsTrue(handled);
+    Assert.AreEqual("first" + Environment.NewLine, dialog.EnteredText);
+
+    message = Message.Create(0, 0x100, (nint)13, 1);
+    arguments = [message, Keys.Enter];
+    handled = (bool)typeof(ImageTextInputDialog).GetMethod(
+      "ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, arguments)!;
+    Assert.IsTrue(handled);
+    Assert.AreEqual(DialogResult.OK, dialog.DialogResult);
+  });
+
+  [TestMethod]
   public void Canvas_TextMovesWithoutMoveTool_DoubleClickEditsAndCrossDeletes() => OnSta(() =>
   {
     using var bitmap = new Bitmap(400, 200);
