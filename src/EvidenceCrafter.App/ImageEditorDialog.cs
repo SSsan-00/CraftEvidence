@@ -86,7 +86,7 @@ internal sealed class ImageEditorDialog : Form
     canvas.TextEditRequested += (_, annotationId) =>
     {
       if (!document.TryGetTextAnnotation(annotationId, out var annotation)) return;
-      using var dialog = new ImageTextInputDialog(annotation.Text);
+      using var dialog = new ImageTextInputDialog(annotation.Text) { TopMost = TopMost };
       if (dialog.ShowDialog(this) == DialogResult.OK) document.UpdateText(annotationId, dialog.EnteredText);
     };
 
@@ -95,7 +95,7 @@ internal sealed class ImageEditorDialog : Form
     {
       Spring = true,
       TextAlign = ContentAlignment.MiddleLeft,
-      Text = EditorInstruction(ImageEditorTool.Rectangle),
+      Text = string.Empty,
       ForeColor = UiTheme.TextMuted,
     };
     canvas.ActionRejected += (_, message) => statusLabel.Text = message;
@@ -209,12 +209,12 @@ internal sealed class ImageEditorDialog : Form
     }
 
     canvas.Tool = tool;
-    statusLabel.Text = EditorInstruction(tool);
+    statusLabel.Text = string.Empty;
   }
 
   private void CanvasTextRequested(object? sender, ImageTextRequestedEventArgs eventArgs)
   {
-    using var dialog = new ImageTextInputDialog();
+    using var dialog = new ImageTextInputDialog() { TopMost = TopMost };
     if (dialog.ShowDialog(this) == DialogResult.OK)
     {
       document.DrawText(dialog.EnteredText, eventArgs.ImageLocation, canvas.DrawingColor);
@@ -276,12 +276,6 @@ internal sealed class ImageEditorDialog : Form
     _ => string.Empty,
   };
 
-  private static string EditorInstruction(ImageEditorTool tool) =>
-    string.Join(" ", new[]
-    {
-      InstructionFor(tool),
-      "テキストはドラッグで移動・ダブルクリックで編集・×で削除。",
-    }.Where(text => !string.IsNullOrEmpty(text)));
 }
 
 internal enum ImageEditorTool
@@ -415,6 +409,7 @@ internal sealed class ImageEditorCanvas : Control
       if (eventArgs.Clicks == 2)
       {
         CancelDrag();
+        Capture = false;
         TextEditRequested?.Invoke(this, textId);
       }
       else BeginTextMove(eventArgs.Location);
@@ -423,6 +418,9 @@ internal sealed class ImageEditorCanvas : Control
     selectedTextId = null;
     if (Tool == ImageEditorTool.Text)
     {
+      // MouseDown runs while WinForms owns mouse capture. Release it before
+      // entering a modal message loop so clicks reach the text input window.
+      Capture = false;
       TextRequested?.Invoke(this, new ImageTextRequestedEventArgs(ToImagePoint(eventArgs.Location)));
       return;
     }

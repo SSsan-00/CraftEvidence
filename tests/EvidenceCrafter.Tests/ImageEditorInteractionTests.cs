@@ -8,6 +8,40 @@ namespace EvidenceCrafter.Tests;
 public sealed class ImageEditorInteractionTests
 {
   [TestMethod]
+  public void TextInput_ModalAddReleasesMouseAndKeepsEditorOpen() => OnSta(() =>
+  {
+    using var bitmap = new Bitmap(400, 200);
+    using var editor = new ImageEditorDialog(bitmap) { TopMost = true };
+    editor.Show();
+    var canvas = editor.Controls.OfType<ImageEditorCanvas>().Single();
+    canvas.Tool = ImageEditorTool.Text;
+    canvas.Capture = true;
+    bool? captured = null;
+    bool? inputTopmost = null;
+    using var timer = new System.Windows.Forms.Timer { Interval = 50 };
+    timer.Tick += (_, _) =>
+    {
+      var input = Application.OpenForms.OfType<ImageTextInputDialog>().SingleOrDefault();
+      if (input is null) return;
+      timer.Stop();
+      captured = canvas.Capture;
+      inputTopmost = input.TopMost;
+      var field = (TextBox)typeof(ImageTextInputDialog).GetField("textBox", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(input)!;
+      field.Text = "追加テキスト";
+      typeof(ImageTextInputDialog).GetMethod("ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .Invoke(input, [Message.Create(input.Handle, 0x100, (nint)13, 1), Keys.Enter]);
+    };
+    timer.Start();
+    var bounds = Invoke<Rectangle>(canvas, "GetImageBounds");
+    Mouse(canvas, "OnMouseDown", new Point(bounds.Left + 20, bounds.Top + 20));
+    Assert.IsFalse(captured, "The modal text dialog must receive its own mouse input.");
+    Assert.IsTrue(inputTopmost);
+    Assert.IsTrue(editor.Visible);
+    Assert.AreEqual(DialogResult.None, editor.DialogResult);
+    Assert.IsTrue(editor.HasChanges);
+  });
+
+  [TestMethod]
   public void TextInput_ShiftEnterAddsLineBreakAndEnterConfirms() => OnSta(() =>
   {
     using var dialog = new ImageTextInputDialog("first");

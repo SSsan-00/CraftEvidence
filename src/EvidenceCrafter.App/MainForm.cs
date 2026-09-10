@@ -1083,6 +1083,7 @@ public sealed class MainForm : Form
       if (!IsDisposed && !Disposing)
       {
         Show();
+        RestoreTopmostMode();
         if (!placementCompleted) Activate();
         captureScreenButton.Enabled = true;
       }
@@ -1183,12 +1184,28 @@ public sealed class MainForm : Form
     }
     finally
     {
+      RestoreTopmostMode();
       if (!string.IsNullOrEmpty(imagePath))
       {
         try { File.Delete(imagePath); } catch (IOException) { }
       }
     }
   }
+
+  private void RestoreTopmostMode()
+  {
+    if (settings.AlwaysOnTop && IsHandleCreated && !IsDisposed && !Disposing)
+    {
+      // Reapply the native z-order after modal windows close, without taking
+      // keyboard focus back from the workbook that just received the image.
+      SetWindowPos(Handle, new nint(-1), 0, 0, 0, 0, 0x0013);
+    }
+  }
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool SetWindowPos(nint window, nint insertAfter,
+    int x, int y, int width, int height, uint flags);
 
   protected override bool ProcessCmdKey(ref Message message, Keys keyData)
   {
@@ -1626,7 +1643,7 @@ public sealed class MainForm : Form
         return;
       }
 
-      using var editor = new ImageEditorDialog(clipboardImage);
+      using var editor = new ImageEditorDialog(clipboardImage) { TopMost = TopMost };
       if (editor.ShowDialog(this) != DialogResult.OK)
       {
         SetStatus("画像の差し替えをキャンセルしました。");
