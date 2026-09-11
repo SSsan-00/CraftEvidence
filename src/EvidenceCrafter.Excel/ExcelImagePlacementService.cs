@@ -500,7 +500,7 @@ public sealed class ExcelImagePlacementService
         MsoFalse,
         MsoTrue,
         cellLeft + horizontalMarginPoints,
-        cellTop + 2.0,
+        cellTop + PlacementPlanner.VerticalInsetPoints,
         fittedImage.WidthPoints,
         fittedImage.HeightPoints);
       if (shape is null)

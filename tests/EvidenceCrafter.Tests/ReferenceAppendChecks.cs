@@ -44,7 +44,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
         if (oldAnalysis.Succeeded)
         {
           var tallRequest = new[] { new AutomaticPlacementImage(imagePath, new ImageDimensions(120, 800)) };
-          var backfilledShapes = new List<string>();
+          var backfilledShapes = new List<(string Name, string CaseLabel)>();
           var boundaryRow = 0;
           foreach (var (label, side) in new[] { ("1-1", EvidenceSide.New), ("1-2", EvidenceSide.New), ("1-2", EvidenceSide.Old), ("1-1", EvidenceSide.Old) })
           {
@@ -56,7 +56,7 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
             }
             var placed = service.PlaceImages(identity, "B1", side, tallRequest, requestedCaseLabel: label);
             Assert.IsTrue(placed.Succeeded, $"{Path.GetFileName(source)} {label} {side}: {placed.Message}");
-            backfilledShapes.Add(placed.PlacedImages[0].ShapeName);
+            backfilledShapes.Add((placed.PlacedImages[0].ShapeName, label));
             if (placed.Analysis!.CompletesCaseAfterPlacement)
             {
               var trim = new ExcelCaseMaintenanceService().TrimCompletedCaseTail(identity, "B1", placed.PlacedImages[0].FocusCell.Row);
@@ -67,7 +67,9 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
           try { Assert.AreEqual("Existing boundary content", GetRequiredProperty(boundary, "Value2")); }
           finally { Release(boundary); }
           var bounds = new List<RectangleF>();
-          foreach (var name in backfilledShapes)
+          var finalSnapshot = new ExcelSheetSnapshotService().Capture(identity, "B1", 3).Snapshot!;
+          var finalAnchors = ExcelAutomaticPlacementService.ConfirmedAnchors(finalSnapshot.LayoutSignals);
+          foreach (var (name, caseLabel) in backfilledShapes)
           {
             var shape = InvokeMethod(shapes, "Item", name)!;
             try
@@ -75,6 +77,17 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
               var rectangle = ShapeBounds(shape);
               Assert.IsFalse(bounds.Any(rectangle.IntersectsWith), "Backfilled NEW/OLD images must not overlap.");
               bounds.Add(rectangle);
+              var anchorIndex = Array.FindIndex(finalAnchors,
+                anchor => ExcelAutomaticPlacementService.FormatCaseLabel(anchor) == caseLabel);
+              Assert.IsGreaterThanOrEqualTo(0, anchorIndex, $"CASE {caseLabel} must still exist after row mutations.");
+              var nextAnchorRow = anchorIndex + 1 < finalAnchors.Length
+                ? finalAnchors[anchorIndex + 1].Row
+                : ExcelWorksheetLimits.MaximumRow + 1;
+              var snapshotShape = finalSnapshot.Shapes.Single(item => item.Name == name);
+              Assert.IsGreaterThanOrEqualTo(finalAnchors[anchorIndex].Row + 1, snapshotShape.StartRow,
+                $"{name} starts outside CASE {caseLabel}.");
+              Assert.IsLessThan(nextAnchorRow, snapshotShape.EndRow,
+                $"{name} intrudes from CASE {caseLabel} into the next CASE at row {nextAnchorRow}.");
             }
             finally { Release(shape); }
           }

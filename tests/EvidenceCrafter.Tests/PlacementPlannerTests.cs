@@ -15,7 +15,7 @@ public sealed class PlacementPlannerTests
       RowHeights = new Dictionary<int, double> { [5] = 0, [6] = 0, [7] = 15, [8] = 15 },
     };
     var result = planner.Plan(request);
-    Assert.AreEqual(8, result.EndRow);
+    Assert.AreEqual(9, result.EndRow);
   }
   [TestMethod]
   public void Plan_ExplicitOccupiedSide_AppendsBelowManagedAndUnmanagedImages()
@@ -47,7 +47,7 @@ public sealed class PlacementPlannerTests
 
     Assert.AreEqual(PlacementMode.CaseStart, result.Mode);
     Assert.AreEqual(5, result.StartRow);
-    Assert.AreEqual(6, result.EndRow);
+    Assert.AreEqual(7, result.EndRow);
     Assert.AreEqual(new CellReference(5, 4), result.FocusCell);
     Assert.HasCount(0, result.Insertions);
   }
@@ -61,6 +61,15 @@ public sealed class PlacementPlannerTests
 
     Assert.AreEqual(PlacementMode.CaseStart, result.Mode);
     Assert.AreEqual(new CellReference(5, 4), result.FocusCell);
+  }
+
+  [TestMethod]
+  public void Plan_VerticalInsetCannotExtendBeyondReportedImageEndRow()
+  {
+    var result = planner.Plan(CreateRequest([], image: new ImageDimensions(100, 30)));
+
+    Assert.AreEqual(7, result.EndRow,
+      "Two 15-point rows fit the image itself, but the 2-point placement inset reaches the next row.");
   }
 
   [TestMethod]
@@ -120,8 +129,8 @@ public sealed class PlacementPlannerTests
 
     Assert.AreEqual(PlacementMode.Gap, result.Mode);
     Assert.AreEqual(20, result.StartRow);
-    Assert.AreEqual(22, result.EndRow);
-    Assert.IsTrue(result.Insertions.Any(insertion => insertion.AtRow == 22 && insertion.Count == 3));
+    Assert.AreEqual(23, result.EndRow);
+    Assert.IsTrue(result.Insertions.Any(insertion => insertion.AtRow == 22 && insertion.Count == 4));
   }
 
   [TestMethod]
@@ -175,8 +184,8 @@ public sealed class PlacementPlannerTests
     var result = planner.Plan(CreateRequest(contents));
 
     Assert.AreEqual(51, result.StartRow);
-    Assert.AreEqual(52, result.EndRow);
-    Assert.IsTrue(result.Insertions.Any(insertion => insertion.Count == 4));
+    Assert.AreEqual(53, result.EndRow);
+    Assert.IsTrue(result.Insertions.Any(insertion => insertion.Count == 5));
   }
 
   [TestMethod]

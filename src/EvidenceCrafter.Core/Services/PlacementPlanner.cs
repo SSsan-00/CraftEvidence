@@ -5,6 +5,7 @@ namespace EvidenceCrafter.Core.Services;
 /// <summary>Creates a side-effect-free plan for image placement and required row insertions.</summary>
 public sealed class PlacementPlanner(ImageSizingService imageSizingService)
 {
+  public const double VerticalInsetPoints = 2.0;
   private const int MinimumImageGapRows = 2;
   private const int MinimumTailRows = 4;
   // Leave two rows below the case header before placing the image.
@@ -82,7 +83,7 @@ public sealed class PlacementPlanner(ImageSizingService imageSizingService)
 
     var requiredRows = CountRowsForHeight(
       startRow,
-      fittedImage.HeightPoints,
+      fittedImage.HeightPoints + VerticalInsetPoints,
       request.RowHeights,
       request.DefaultRowHeightPoints);
     var imageEndValue = (long)startRow + requiredRows - 1;
