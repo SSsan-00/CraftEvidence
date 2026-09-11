@@ -146,6 +146,32 @@ public sealed class ExcelRowMutationService
         UseActiveCell: false));
   }
 
+  /// <summary>Normalizes only the rows just inserted by this application.</summary>
+  internal RowMutationResult NormalizeInsertedRows(
+    WorkbookIdentity workbook,
+    string worksheetName,
+    int startRow,
+    int count,
+    double rowHeightPoints)
+  {
+    ArgumentNullException.ThrowIfNull(workbook);
+    ArgumentException.ThrowIfNullOrWhiteSpace(worksheetName);
+    ValidateInsertion(startRow, count);
+    if (!double.IsFinite(rowHeightPoints) || rowHeightPoints <= 0 || rowHeightPoints > 409.5)
+      throw new ArgumentOutOfRangeException(nameof(rowHeightPoints));
+
+    return Execute(
+      workbook,
+      worksheetName,
+      new RowMutationPlan(
+        RowMutationOperation.Insert,
+        startRow,
+        count,
+        "Normalize the newly inserted rows for automatic image placement.",
+        UseActiveCell: false,
+        InsertedRowHeightPoints: rowHeightPoints));
+  }
+
   /// <summary>
   /// Inserts rows immediately above the active cell on the selected worksheet.
   /// The active row is read only after the Workbook and Worksheet identity checks
@@ -1066,6 +1092,18 @@ public sealed class ExcelRowMutationService
         throw new InvalidOperationException("The requested Excel row could not be resolved.");
       targetRows = InvokeProperty(firstRow, "Resize", resolvedCount) ??
         throw new InvalidOperationException("The requested Excel row range could not be resolved.");
+      if (plan.InsertedRowHeightPoints is double insertedRowHeight)
+      {
+        SetProperty(targetRows, "Hidden", false);
+        SetProperty(targetRows, "RowHeight", insertedRowHeight);
+        return RowMutationResult.SucceededResult(
+          plan.Operation,
+          resolvedWorksheetName,
+          resolvedStartRow,
+          resolvedCount,
+          $"自動配置用の追加行 {resolvedWorksheetName}!R{resolvedStartRow}:R{resolvedStartRow + resolvedCount - 1} を表示し、行高を {insertedRowHeight:0.##}pt に揃えました（未保存）。",
+          null);
+      }
       if (plan.CaptureUndoSnapshot)
       {
         EnsureNoExternalWorksheetFormulas(workbook, resolvedWorksheetName);
@@ -1937,7 +1975,8 @@ public sealed class ExcelRowMutationService
     TrailingDeletionRequest? DeletionRequest = null,
     bool ExactSafeDeletion = false,
     bool CaptureUndoSnapshot = false,
-    RowDeletionSnapshot? RestoreSnapshot = null);
+    RowDeletionSnapshot? RestoreSnapshot = null,
+    double? InsertedRowHeightPoints = null);
 
   private sealed record TrailingDeletionRequest(int CaseStartRow, int CaseEndRow, int TailRows);
 

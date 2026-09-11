@@ -224,6 +224,27 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
       Assert.IsTrue(insertedRows.Succeeded, insertedRows.Message);
       Assert.IsTrue(insertedRows.Changed, insertedRows.Message);
       Assert.AreEqual(2, insertedRows.Count);
+      otherAnchorCell = GetRequiredProperty(otherWorksheet, "Rows", insertedRows.StartRow);
+      var insertedBand = GetRequiredProperty(otherAnchorCell, "Resize", insertedRows.Count);
+      SetProperty(insertedBand, "Hidden", true);
+      SetProperty(insertedBand, "RowHeight", 5.0);
+      Release(insertedBand);
+      Release(otherAnchorCell);
+      otherAnchorCell = null;
+      var normalizedRows = RunExcelSta(() => rowService.NormalizeInsertedRows(
+        otherIdentity,
+        "OtherTarget",
+        insertedRows.StartRow,
+        insertedRows.Count,
+        15.0));
+      Assert.IsTrue(normalizedRows.Succeeded && normalizedRows.Changed, normalizedRows.Message);
+      otherAnchorCell = GetRequiredProperty(otherWorksheet, "Rows", insertedRows.StartRow);
+      insertedBand = GetRequiredProperty(otherAnchorCell, "Resize", insertedRows.Count);
+      Assert.IsFalse(Convert.ToBoolean(GetRequiredProperty(insertedBand, "Hidden"), CultureInfo.InvariantCulture));
+      Assert.AreEqual(15.0, Convert.ToDouble(GetRequiredProperty(insertedBand, "RowHeight"), CultureInfo.InvariantCulture), 0.01);
+      Release(insertedBand);
+      Release(otherAnchorCell);
+      otherAnchorCell = null;
       otherAnchorCell = GetRequiredProperty(otherWorksheet, "Cells", insertedRows.StartRow, 1);
       SetProperty(otherAnchorCell, "Value2", "post-insert edit");
       Release(otherAnchorCell);

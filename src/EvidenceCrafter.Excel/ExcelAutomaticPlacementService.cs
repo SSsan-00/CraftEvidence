@@ -8,6 +8,7 @@ namespace EvidenceCrafter.Excel;
 /// <summary>Connects a live worksheet snapshot to Case analysis, placement planning and verified Excel mutations.</summary>
 public sealed class ExcelAutomaticPlacementService
 {
+  private const double InsertedRowHeightPoints = 15;
   private readonly ExcelSheetSnapshotService snapshotService;
   private readonly CaseLayoutAnalyzer layoutAnalyzer;
   private readonly ContentOccupancyAnalyzer occupancyAnalyzer;
@@ -246,45 +247,64 @@ public sealed class ExcelAutomaticPlacementService
     for (var index = 0; index < images.Count; index++)
     {
       var step = initialAnalysis.Steps[index];
+      var verifiedStep = step;
       var currentCaseEnd = initialAnalysis.LayoutAnalysis!.Layout!.EndRow + appliedRows.Sum(row => row.Count);
-      foreach (var insertion in step.Plan.Insertions)
+      var pendingInsertions = step.Plan.Insertions;
+      for (var expansionPass = 0; pendingInsertions.Count > 0; expansionPass++)
       {
-        var appliedInsertion = ResolveAppliedInsertion(currentCaseEnd, insertion);
-        var mutation = rowMutationService.InsertRows(
-          workbook,
-          initialAnalysis.WorksheetName,
-          appliedInsertion);
-        if (!mutation.Succeeded || !mutation.Changed)
+        if (expansionPass >= 3)
         {
-          return Compensate(workbook, initialAnalysis, placed, appliedRows, mutation.Message);
+          return Compensate(workbook, initialAnalysis, placed, appliedRows,
+            "追加行を3回補正しても必要な配置領域を確保できなかったため、画像を配置せず行挿入を戻します。");
         }
 
-        appliedRows.Add(new AppliedRowInsertion(mutation.WorksheetName, mutation.StartRow, mutation.Count, insertion.Reason));
-        currentCaseEnd = checked(currentCaseEnd + mutation.Count);
-      }
+        foreach (var insertion in pendingInsertions)
+        {
+          var appliedInsertion = ResolveAppliedInsertion(currentCaseEnd, insertion);
+          var mutation = rowMutationService.InsertRows(
+            workbook,
+            initialAnalysis.WorksheetName,
+            appliedInsertion);
+          if (!mutation.Succeeded || !mutation.Changed)
+          {
+            return Compensate(workbook, initialAnalysis, placed, appliedRows, mutation.Message);
+          }
 
-      if (step.Plan.Insertions.Count > 0)
-      {
+          appliedRows.Add(new AppliedRowInsertion(mutation.WorksheetName, mutation.StartRow, mutation.Count, insertion.Reason));
+          var normalized = rowMutationService.NormalizeInsertedRows(
+            workbook,
+            mutation.WorksheetName,
+            mutation.StartRow,
+            mutation.Count,
+            InsertedRowHeightPoints);
+          if (!normalized.Succeeded || !normalized.Changed)
+          {
+            return Compensate(workbook, initialAnalysis, placed, appliedRows, normalized.Message);
+          }
+          currentCaseEnd = checked(currentCaseEnd + mutation.Count);
+        }
+
         // Inserted rows can inherit a different height or Hidden state in Excel.
         // Verify the real space before adding the picture, not the assumed model alone.
         var expanded = Analyze(workbook, initialAnalysis.WorksheetName, side,
           [step.Image], preferActiveGap, horizontalMarginPoints, initialAnalysis.CaseLabel);
-        if (!expanded.Succeeded || expanded.Steps[0].Plan.Insertions.Count > 0 ||
-            expanded.Steps[0].Plan.FocusCell != step.Plan.FocusCell)
+        if (!expanded.Succeeded)
         {
           return Compensate(workbook, initialAnalysis, placed, appliedRows,
-            "追加行の実際の高さ・配置位置を確認できないため、画像を配置せず行挿入を戻します。");
+            $"追加行の実際の高さ・配置位置を確認できないため、画像を配置せず行挿入を戻します。{expanded.Message}");
         }
+        verifiedStep = expanded.Steps[0] with { Index = step.Index, Image = step.Image };
+        pendingInsertions = verifiedStep.Plan.Insertions;
       }
 
       var placement = imagePlacementService.PlaceImage(
         workbook,
         initialAnalysis.WorksheetName,
-        step.Plan.FocusCell,
+        verifiedStep.Plan.FocusCell,
         side,
-        step.Image.ImagePath,
-        step.Image.Dimensions,
-        step.AvailableWidthPoints,
+        verifiedStep.Image.ImagePath,
+        verifiedStep.Image.Dimensions,
+        verifiedStep.AvailableWidthPoints,
         horizontalMarginPoints);
       if (!placement.Succeeded)
       {
@@ -298,8 +318,8 @@ public sealed class ExcelAutomaticPlacementService
         placement.FocusCell,
         placement.FocusSucceeded,
         placement.Target!,
-        step.Plan));
-      executedSteps.Add(step);
+        verifiedStep.Plan));
+      executedSteps.Add(verifiedStep);
     }
 
     var executedAnalysis = initialAnalysis with { Steps = executedSteps };
