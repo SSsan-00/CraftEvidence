@@ -158,6 +158,19 @@ internal sealed class ImageEditDocument : IDisposable
     return true;
   }
 
+  public bool TryGetResizedTextAnnotation(Guid annotationId, float fontSize, out TextAnnotation annotation)
+  {
+    if (!TryGetTextAnnotation(annotationId, out var existing))
+    {
+      annotation = default!;
+      return false;
+    }
+
+    annotation = CreateTextAnnotation(existing.Id, existing.Text, existing.Location, existing.Color, fontSize)
+      with { MaskedRegions = existing.MaskedRegions };
+    return true;
+  }
+
   public bool TryGetTextAnnotation(Guid annotationId, out TextAnnotation annotation)
   {
     ObjectDisposedException.ThrowIf(disposed, this);
@@ -187,6 +200,18 @@ internal sealed class ImageEditDocument : IDisposable
 
     var nextAnnotations = textAnnotations.ToList();
     nextAnnotations[index] = moved;
+    Commit(CopyBitmap(current), nextStateId++, nextAnnotations);
+    return true;
+  }
+
+  public bool ResizeText(Guid annotationId, float fontSize)
+  {
+    if (!TryGetResizedTextAnnotation(annotationId, fontSize, out var resized)) return false;
+    var index = textAnnotations.ToList().FindIndex(item => item.Id == annotationId);
+    if (index < 0 || Math.Abs(textAnnotations[index].FontSize - resized.FontSize) < 0.01F) return false;
+
+    var nextAnnotations = textAnnotations.ToList();
+    nextAnnotations[index] = resized;
     Commit(CopyBitmap(current), nextStateId++, nextAnnotations);
     return true;
   }
@@ -489,7 +514,10 @@ internal sealed class ImageEditDocument : IDisposable
 
   private Font CreateTextFont(float? size = null) => new(
     FontFamily.GenericSansSerif,
-    size ?? Math.Max(12F, Math.Min(current.Width, current.Height) / 25F),
+    Math.Clamp(
+      size ?? Math.Max(12F, Math.Min(current.Width, current.Height) / 25F),
+      8F,
+      Math.Max(12F, Math.Min(current.Width, current.Height) / 2F)),
     FontStyle.Bold,
     GraphicsUnit.Pixel);
 

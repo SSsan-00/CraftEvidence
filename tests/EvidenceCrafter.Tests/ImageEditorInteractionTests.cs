@@ -78,6 +78,19 @@ public sealed class ImageEditorInteractionTests
     Assert.IsTrue(document.TryGetTextAnnotation(id, out var moved));
     Assert.IsTrue(Math.Abs(moved.Location.X - 140) <= 1 && Math.Abs(moved.Location.Y - 80) <= 1,
       "Dragging must preserve the grab offset within one image pixel of display rounding.");
+    var originalFontSize = moved.FontSize;
+    var resizeHandle = Invoke<Rectangle>(canvas, "GetResizeBounds");
+    var resizeStart = new Point(resizeHandle.Left + resizeHandle.Width / 2, resizeHandle.Top + resizeHandle.Height / 2);
+    var resizeEnd = new Point(resizeStart.X + 80, resizeStart.Y + 40);
+    Mouse(canvas, "OnMouseDown", resizeStart);
+    Mouse(canvas, "OnMouseMove", resizeEnd);
+    Mouse(canvas, "OnMouseUp", resizeEnd);
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out var resized));
+    Assert.IsGreaterThan(originalFontSize, resized.FontSize);
+    document.Undo();
+    Assert.IsTrue(document.TryGetTextAnnotation(id, out var restored));
+    Assert.AreEqual(originalFontSize, restored.FontSize);
+    document.Redo();
     Guid? editedId = null;
     canvas.TextEditRequested += (_, selected) => editedId = selected;
     Mouse(canvas, "OnMouseDown", finish, clicks: 2);

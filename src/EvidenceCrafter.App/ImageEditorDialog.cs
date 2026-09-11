@@ -295,9 +295,13 @@ internal sealed class ImageEditorCanvas : Control
   private Point dragCurrentClient;
   private Guid? selectedTextId;
   private Guid? movingTextId;
+  private Guid? resizingTextId;
   private Point textDragStartImage;
   private Point textOriginalLocation;
   private Point textPreviewLocation;
+  private RectangleF textOriginalBounds;
+  private float textOriginalFontSize;
+  private float textPreviewFontSize;
   private bool textDragThresholdPassed;
   private bool dragging;
 
@@ -310,7 +314,7 @@ internal sealed class ImageEditorCanvas : Control
     SetStyle(ControlStyles.ResizeRedraw, true);
     SetStyle(ControlStyles.Selectable, true);
     TabStop = true;
-    AccessibleDescription = "テキストを選択後、F2で編集、Deleteまたは右上の×で削除。ドラッグで移動。";
+    AccessibleDescription = "テキストを選択後、F2またはダブルクリックで編集、×で削除。ドラッグで移動、右下のハンドルで拡大縮小。";
   }
 
   public event EventHandler<ImageTextRequestedEventArgs>? TextRequested;
@@ -343,13 +347,18 @@ internal sealed class ImageEditorCanvas : Control
     {
       movingTextId = null;
     }
+    else if (resizingTextId is Guid resizingId &&
+      !document.TryGetResizedTextAnnotation(resizingId, textPreviewFontSize, out preview))
+    {
+      resizingTextId = null;
+    }
 
     var savedState = eventArgs.Graphics.Save();
     eventArgs.Graphics.TranslateTransform(imageBounds.X, imageBounds.Y);
     eventArgs.Graphics.ScaleTransform(
       imageBounds.Width / (float)document.Width,
       imageBounds.Height / (float)document.Height);
-    document.DrawTextAnnotations(eventArgs.Graphics, movingTextId, preview);
+    document.DrawTextAnnotations(eventArgs.Graphics, movingTextId ?? resizingTextId, preview);
     DrawSelectedTextBounds(eventArgs.Graphics, preview);
     eventArgs.Graphics.Restore(savedState);
     var deleteBounds = GetDeleteBounds();
@@ -360,8 +369,15 @@ internal sealed class ImageEditorCanvas : Control
       TextRenderer.DrawText(eventArgs.Graphics, "×", Font, deleteBounds, Color.White,
         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
     }
+    var resizeBounds = GetResizeBounds();
+    if (!resizeBounds.IsEmpty)
+    {
+      using var brush = new SolidBrush(Color.DeepSkyBlue);
+      eventArgs.Graphics.FillRectangle(brush, resizeBounds);
+      eventArgs.Graphics.DrawRectangle(Pens.White, resizeBounds);
+    }
 
-    if (!dragging || movingTextId is not null || Tool is ImageEditorTool.Text)
+    if (!dragging || movingTextId is not null || resizingTextId is not null || Tool is ImageEditorTool.Text)
     {
       return;
     }
@@ -396,6 +412,11 @@ internal sealed class ImageEditorCanvas : Control
       document.DeleteText(deleteId);
       selectedTextId = null;
       Invalidate();
+      return;
+    }
+    if (eventArgs.Button == MouseButtons.Left && GetResizeBounds().Contains(eventArgs.Location))
+    {
+      BeginTextResize();
       return;
     }
     if (eventArgs.Button != MouseButtons.Left || !GetImageBounds().Contains(eventArgs.Location))
@@ -437,6 +458,22 @@ internal sealed class ImageEditorCanvas : Control
     base.OnMouseMove(eventArgs);
     if (!dragging)
     {
+      Cursor = GetResizeBounds().Contains(eventArgs.Location)
+        ? Cursors.SizeNWSE
+        : GetImageBounds().Contains(eventArgs.Location) &&
+          document.TryGetTextAt(ToImagePoint(eventArgs.Location), out _)
+          ? Cursors.SizeAll
+          : Cursors.Cross;
+      return;
+    }
+
+    if (resizingTextId is not null)
+    {
+      var point = ToImagePoint(ClampToImageBounds(eventArgs.Location));
+      var scaleX = (point.X - textOriginalBounds.Left) / Math.Max(1F, textOriginalBounds.Width);
+      var scaleY = (point.Y - textOriginalBounds.Top) / Math.Max(1F, textOriginalBounds.Height);
+      textPreviewFontSize = textOriginalFontSize * Math.Max(0.1F, Math.Max(scaleX, scaleY));
+      Invalidate();
       return;
     }
 
@@ -466,6 +503,7 @@ internal sealed class ImageEditorCanvas : Control
     }
 
     if (movingTextId is not null) OnMouseMove(eventArgs);
+    if (resizingTextId is not null) OnMouseMove(eventArgs);
     dragCurrentClient = ClampToImageBounds(eventArgs.Location);
     dragging = false;
     Capture = false;
@@ -473,6 +511,13 @@ internal sealed class ImageEditorCanvas : Control
     {
       movingTextId = null;
       document.MoveText(movingId, textPreviewLocation);
+      Invalidate();
+      return;
+    }
+    if (resizingTextId is Guid resizingId)
+    {
+      resizingTextId = null;
+      document.ResizeText(resizingId, textPreviewFontSize);
       Invalidate();
       return;
     }
@@ -506,6 +551,7 @@ internal sealed class ImageEditorCanvas : Control
 
     dragging = false;
     movingTextId = null;
+    resizingTextId = null;
     Invalidate();
   }
 
@@ -533,11 +579,25 @@ internal sealed class ImageEditorCanvas : Control
     Invalidate();
   }
 
+  private void BeginTextResize()
+  {
+    if (selectedTextId is not Guid id || !document.TryGetTextAnnotation(id, out var annotation)) return;
+    resizingTextId = id;
+    movingTextId = null;
+    textOriginalBounds = annotation.Bounds;
+    textOriginalFontSize = annotation.FontSize;
+    textPreviewFontSize = annotation.FontSize;
+    dragging = true;
+    Capture = true;
+    Invalidate();
+  }
+
   internal bool CancelDrag()
   {
     if (!dragging) return false;
     dragging = false;
     movingTextId = null;
+    resizingTextId = null;
     Capture = false;
     Invalidate();
     return true;
@@ -563,13 +623,31 @@ internal sealed class ImageEditorCanvas : Control
 
   private Rectangle GetDeleteBounds()
   {
-    if (selectedTextId is not Guid id || !document.TryGetTextAnnotation(id, out var annotation)) return Rectangle.Empty;
-    if (movingTextId == id && document.TryGetMovedTextAnnotation(id, textPreviewLocation, out var preview)) annotation = preview;
+    if (!TryGetSelectedTextPreview(out var annotation)) return Rectangle.Empty;
     var image = GetImageBounds();
     var size = Math.Max(20, (int)(22 * DeviceDpi / 96F));
     var x = image.X + (int)(annotation.Bounds.Right * image.Width / document.Width);
     var y = image.Y + (int)(annotation.Bounds.Top * image.Height / document.Height) - size;
     return new Rectangle(Math.Clamp(x, 0, Math.Max(0, Width - size)), Math.Clamp(y, 0, Math.Max(0, Height - size)), size, size);
+  }
+
+  private Rectangle GetResizeBounds()
+  {
+    if (!TryGetSelectedTextPreview(out var annotation)) return Rectangle.Empty;
+    var image = GetImageBounds();
+    var size = Math.Max(10, (int)(12 * DeviceDpi / 96F));
+    var x = image.X + (int)(annotation.Bounds.Right * image.Width / document.Width) - size / 2;
+    var y = image.Y + (int)(annotation.Bounds.Bottom * image.Height / document.Height) - size / 2;
+    return new Rectangle(Math.Clamp(x, 0, Math.Max(0, Width - size)), Math.Clamp(y, 0, Math.Max(0, Height - size)), size, size);
+  }
+
+  private bool TryGetSelectedTextPreview(out TextAnnotation annotation)
+  {
+    annotation = default!;
+    if (selectedTextId is not Guid id || !document.TryGetTextAnnotation(id, out annotation)) return false;
+    if (movingTextId == id && document.TryGetMovedTextAnnotation(id, textPreviewLocation, out var moved)) annotation = moved;
+    else if (resizingTextId == id && document.TryGetResizedTextAnnotation(id, textPreviewFontSize, out var resized)) annotation = resized;
+    return true;
   }
 
   private void DrawSelectedTextBounds(Graphics graphics, TextAnnotation? preview)
