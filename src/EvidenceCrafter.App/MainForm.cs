@@ -437,7 +437,9 @@ public sealed class MainForm : Form
     if (IsDisposed || Disposing) return;
 
     layout.PerformLayout();
-    var preferred = layout.GetPreferredSize(Size.Empty);
+    // Measure the minimum content size, not an unconstrained, stretched layout.
+    // Percent-width children must not turn the expanded window into its new minimum.
+    var preferred = layout.GetPreferredSize(new Size(1, 1));
     var requiredClientSize = new Size(
       Math.Max(760, preferred.Width),
       Math.Max(370, preferred.Height));

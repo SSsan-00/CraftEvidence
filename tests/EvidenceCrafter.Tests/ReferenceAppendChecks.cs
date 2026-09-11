@@ -35,10 +35,51 @@ public sealed partial class ExcelSessionCatalogIntegrationTests
         _ = InvokeMethod(workbook, "Activate");
         _ = InvokeMethod(sheet, "Activate");
         var discovery = new ExcelSessionCatalog().Discover();
-        var identity = discovery.Workbooks.Single(item => string.Equals(item.FullPath, copy, StringComparison.OrdinalIgnoreCase));
+        var identity = discovery.Workbooks.SingleOrDefault(item => string.Equals(item.FullPath, copy, StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(identity, $"Open={GetRequiredProperty(workbook, "FullName")}; found={string.Join(";", discovery.Workbooks.Select(item => item.FullPath))}; warnings={string.Join(";", discovery.Warnings)}");
         var service = new ExcelAutomaticPlacementService();
         var request = new[] { new AutomaticPlacementImage(imagePath, new ImageDimensions(120, 80)) };
         shapes = GetRequiredProperty(sheet, "Shapes");
+        var oldAnalysis = service.Analyze(identity, "B1", EvidenceSide.Old, request, requestedCaseLabel: "1-1");
+        if (oldAnalysis.Succeeded)
+        {
+          var tallRequest = new[] { new AutomaticPlacementImage(imagePath, new ImageDimensions(120, 800)) };
+          var backfilledShapes = new List<string>();
+          var boundaryRow = 0;
+          foreach (var (label, side) in new[] { ("1-1", EvidenceSide.New), ("1-2", EvidenceSide.New), ("1-2", EvidenceSide.Old), ("1-1", EvidenceSide.Old) })
+          {
+            if (label == "1-1" && side == EvidenceSide.Old)
+            {
+              var before = service.Analyze(identity, "B1", side, tallRequest, requestedCaseLabel: label);
+              boundaryRow = before.LayoutAnalysis!.Layout!.EndRow;
+              SetRangeProperty(sheet, $"D{boundaryRow}", "Value2", "Existing boundary content");
+            }
+            var placed = service.PlaceImages(identity, "B1", side, tallRequest, requestedCaseLabel: label);
+            Assert.IsTrue(placed.Succeeded, $"{Path.GetFileName(source)} {label} {side}: {placed.Message}");
+            backfilledShapes.Add(placed.PlacedImages[0].ShapeName);
+            if (placed.Analysis!.CompletesCaseAfterPlacement)
+            {
+              var trim = new ExcelCaseMaintenanceService().TrimCompletedCaseTail(identity, "B1", placed.PlacedImages[0].FocusCell.Row);
+              trim.DeletionSnapshot?.Dispose();
+            }
+          }
+          var boundary = GetRequiredProperty(sheet, "Range", $"D{boundaryRow}");
+          try { Assert.AreEqual("Existing boundary content", GetRequiredProperty(boundary, "Value2")); }
+          finally { Release(boundary); }
+          var bounds = new List<RectangleF>();
+          foreach (var name in backfilledShapes)
+          {
+            var shape = InvokeMethod(shapes, "Item", name)!;
+            try
+            {
+              var rectangle = ShapeBounds(shape);
+              Assert.IsFalse(bounds.Any(rectangle.IntersectsWith), "Backfilled NEW/OLD images must not overlap.");
+              bounds.Add(rectangle);
+            }
+            finally { Release(shape); }
+          }
+          Console.WriteLine($"BACKFILL verified: {Path.GetFileName(source)}");
+        }
         for (var pass = 0; pass < 3; pass++)
         {
           var result = service.PlaceImages(identity, "B1", EvidenceSide.New, request, requestedCaseLabel: "1-1");

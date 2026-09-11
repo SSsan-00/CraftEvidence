@@ -260,7 +260,8 @@ public sealed class ExcelAutomaticPlacementService
 
         foreach (var insertion in pendingInsertions)
         {
-          var appliedInsertion = ResolveAppliedInsertion(currentCaseEnd, insertion);
+          var appliedInsertion = ResolveAppliedInsertion(currentCaseEnd, insertion,
+            initialAnalysis.LayoutAnalysis!.Layout!.CanDeleteTrailingRows);
           var mutation = rowMutationService.InsertRows(
             workbook,
             initialAnalysis.WorksheetName,
@@ -453,9 +454,12 @@ public sealed class ExcelAutomaticPlacementService
         ? EvidenceSide.New
         : layout.SupportsSide(fallback) ? fallback : EvidenceSide.New;
 
-  private static RowInsertion ResolveAppliedInsertion(int currentCaseEnd, RowInsertion insertion)
+  private static RowInsertion ResolveAppliedInsertion(int currentCaseEnd, RowInsertion insertion, bool hasNextCase)
   {
-    return currentCaseEnd < ExcelWorksheetLimits.MaximumRow && insertion.AtRow == currentCaseEnd + 1
+    // A following Case anchor moves down with the insertion and defines the new end.
+    // Inserting above the current last row instead moves its content on every retry,
+    // so a required tail after that content can never be created.
+    return !hasNextCase && currentCaseEnd < ExcelWorksheetLimits.MaximumRow && insertion.AtRow == currentCaseEnd + 1
       ? insertion with
       {
         AtRow = currentCaseEnd,
